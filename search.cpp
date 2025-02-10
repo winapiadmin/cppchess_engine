@@ -11,7 +11,7 @@ inline int piece_value(chess::PieceType type){
 	}
 	return 0;
 }
-chess::Movelist order_moves(const chess::Board& board,bool capturesonly=false) {
+chess::Movelist order_moves(const chess::Board board,bool capturesonly=false) {
     chess::Movelist capture_moves, moves, quiet_moves;
     chess::movegen::legalmoves<chess::movegen::MoveGenType::CAPTURE>(capture_moves, board);
     chess::movegen::legalmoves<chess::movegen::MoveGenType::QUIET>(quiet_moves, board);
@@ -53,7 +53,7 @@ int calculateExtensions(const chess::Board &board){
 	if (board.inCheck())exts++;
 	return exts;	
 }
-int searchcaptures(chess::Board& board, int alpha, int beta) {
+int searchcaptures(chess::Board board, int alpha, int beta) {
     if (board.isGameOver().first!=chess::GameResultReason::NONE) {
         return eval(board);
     }
@@ -79,7 +79,7 @@ int searchcaptures(chess::Board& board, int alpha, int beta) {
 
     return alpha;
 }
-int search(chess::Board& board, int depth, int alpha, int beta) {
+int search(chess::Board board, int depth, int alpha, int beta) {
     if (depth == 0) {
         return searchcaptures(board,alpha,beta);
     }

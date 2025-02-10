@@ -13,5 +13,5 @@
 	#define Queen 900
 	#define MATE(i) MAX-i
 	#define MATE_DISTANCE(i) i-MAX_MATE
-	int eval(chess::Board&);
+	int eval(chess::Board);
 #endif //EVAL

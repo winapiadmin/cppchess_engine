@@ -1,6 +1,5 @@
 #pragma once
 //A weird header? but when remove it failes.
-//THIS IS NOT TRANSPOSITION (it will be transposition.h)
 #include "chess.hpp"
 #include <cstdint>
 #include <vector>

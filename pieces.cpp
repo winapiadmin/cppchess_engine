@@ -31,7 +31,7 @@ int getGamePhase(int whiteKnights, int whiteBishops, int whiteRooks, int whiteQu
         return 3; // Endgame
     }
 }
-int phase(const chess::Board& board) {
+int phase(const chess::Board board) {
     int whiteKnights = POPCOUNT64(board.pieces(chess::PieceType::underlying::KNIGHT, chess::Color::underlying::WHITE).getBits());
     int whiteBishops = POPCOUNT64(board.pieces(chess::PieceType::underlying::BISHOP, chess::Color::underlying::WHITE).getBits());
     int whiteRooks = POPCOUNT64(board.pieces(chess::PieceType::underlying::ROOK, chess::Color::underlying::WHITE).getBits());
@@ -211,7 +211,7 @@ std::vector<Square> scan_reversed(Bitboard bb)
 }
 
 // **1. Evaluate Bad Bishops**
-int evaluateBadBishops(const chess::Board& board) {
+int evaluateBadBishops(const chess::Board board) {
     U64 myBishops = board.pieces(chess::PieceType::underlying::BISHOP, board.sideToMove()).getBits();
     U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     
@@ -227,7 +227,7 @@ int evaluateBadBishops(const chess::Board& board) {
 }
 
 // **2. Evaluate King Safety**
-int evaluateKingSafety(const chess::Board& board) {
+int evaluateKingSafety(const chess::Board board) {
     U64 king = 1ULL << board.kingSq(board.sideToMove()).index();
     U64 ownPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     U64 enemyPieces = board.them(board.sideToMove()).getBits();
@@ -236,14 +236,14 @@ int evaluateKingSafety(const chess::Board& board) {
 }
 
 // **3. Evaluate King Pawn Tropism**
-int evaluateKingPawnTropism(const chess::Board& board) {
+int evaluateKingPawnTropism(const chess::Board board) {
     U64 king = 1ULL << board.kingSq(board.sideToMove()).index();
     U64 enemyPawns = board.pieces(chess::PieceType::underlying::PAWN, ~board.sideToMove()).getBits();
     return kingPawnTropism(king, enemyPawns) * -3; // Penalize proximity to enemy pawns
 }
 
 // **4. Evaluate Rooks on Open/Semi-Open Files**
-int evaluateRooksOnFiles(const chess::Board& board) {
+int evaluateRooksOnFiles(const chess::Board board) {
     U64 myRooks = board.pieces(chess::PieceType::underlying::ROOK, board.sideToMove()).getBits();
     U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     
@@ -260,7 +260,7 @@ int evaluateRooksOnFiles(const chess::Board& board) {
 }
 
 // **5. Evaluate Fianchetto Bishops**
-int evaluateFianchetto(const chess::Board& board) {
+int evaluateFianchetto(const chess::Board board) {
     U64 myBishops = board.pieces(chess::PieceType::underlying::BISHOP, board.sideToMove()).getBits();
     U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     
@@ -276,7 +276,7 @@ int evaluateFianchetto(const chess::Board& board) {
 }
 
 // **6. Evaluate Trapped Pieces**
-int evaluateTrappedPieces(const chess::Board& board) {
+int evaluateTrappedPieces(const chess::Board board) {
     U64 myPieces = board.us(board.sideToMove()).getBits();
     U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     U64 enemyAttacks = board.them(~board.sideToMove()).getBits();
@@ -284,7 +284,7 @@ int evaluateTrappedPieces(const chess::Board& board) {
     return POPCOUNT64(getTrappedPieces(myPieces, myPawns, enemyAttacks)) * 10;
 }
 
-int evaluateKnightForks(const chess::Board& board) {
+int evaluateKnightForks(const chess::Board board) {
     U64 myKnights = board.pieces(chess::PieceType::KNIGHT, board.sideToMove()).getBits();
     chess::Bitboard enemyPieces = board.them(board.sideToMove());
 
@@ -292,7 +292,7 @@ int evaluateKnightForks(const chess::Board& board) {
 
     // Iterate over each knight
     for (int knightSq : scan_reversed(myKnights)) {
-        chess::Bitboard attacks = getKnightAttacks(1ULL << knightSq);
+        chess::Bitboard attacks = getKnightAttacks(chess::Square(knightSq));
         int attackedPieces = (attacks & enemyPieces).count();
 
         if (attackedPieces >= 2) { // Only count forks if at least two enemy pieces are attacked
@@ -305,7 +305,7 @@ int evaluateKnightForks(const chess::Board& board) {
 
 
 // **8. Evaluate King Mobility**
-int evaluateKingMobility(const chess::Board& board) {
+int evaluateKingMobility(const chess::Board board) {
     U64 king = 1ULL << board.kingSq(board.sideToMove()).index();
     U64 myPieces = board.us(board.sideToMove()).getBits();
 
@@ -313,13 +313,13 @@ int evaluateKingMobility(const chess::Board& board) {
 }
 
 // **9. Evaluate Space Control**
-int evaluateSpaceControl(const chess::Board& board) {
+int evaluateSpaceControl(const chess::Board board) {
     U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     U64 enemyPawns = board.pieces(chess::PieceType::underlying::PAWN, ~board.sideToMove()).getBits();
 
     return evaluateSpace(myPawns, enemyPawns, board.sideToMove());
 }
-int evaluateTempo(chess::Board& board) {
+int evaluateTempo(chess::Board board) {
     chess::Movelist myMoves, opponentMoves;
     
     // Generate all legal moves for both sides

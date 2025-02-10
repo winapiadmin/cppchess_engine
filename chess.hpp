@@ -1815,13 +1815,13 @@ class Board {
               half_moves(half_moves),
               captured_piece(captured_piece) {}
     };
-    std::vector<Move> move_stack;
     enum class PrivateCtor { CREATE };
 
     // private constructor to avoid initialization
     Board(PrivateCtor) {}
 
    public:
+    std::vector<Move> move_stack;
     explicit Board(std::string_view fen = constants::STARTPOS, bool chess960 = false) {
         prev_states_.reserve(256);
         chess960_ = chess960;
@@ -2138,12 +2138,18 @@ class Board {
     }
 Move pop() {
     if (move_stack.empty()) {
-        return Move(); // Return an empty move instead of causing a crash
+        return Move(); // Return an empty move if no move to undo
     }
-    
-    Move move = move_stack.back();  // Get last move safely
-    move_stack.pop_back();          // Remove last move from history
-    unmakeMove(move);               // Undo the move in board state
+
+    Move move = move_stack.back();  
+    move_stack.pop_back();  
+
+    if (move.from() != chess::Square::underlying::NO_SQ && move.to() != chess::Square::underlying::NO_SQ) {
+        unmakeMove(move);  
+    } else {
+        std::cerr << "Invalid move detected in pop()!" << std::endl;
+    }
+
     return move;
 }
 

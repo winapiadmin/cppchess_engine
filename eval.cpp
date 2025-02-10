@@ -1,7 +1,7 @@
 #include "eval.h"
 
 
-int eval(chess::Board &board){
+int eval(chess::Board board){
 	//Game over
 	if (board.inCheck()&&board.isGameOver().first!=chess::GameResultReason::NONE)return MAX;
 	else if (board.isGameOver().first!=chess::GameResultReason::NONE)return 0;

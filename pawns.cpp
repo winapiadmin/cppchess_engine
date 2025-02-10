@@ -62,7 +62,7 @@ int backward(U64 whitePawns, U64 blackPawns) {
 inline U64 getBlockedPawns(U64 pawns, U64 enemyPieces, bool isWhite) {
     return isWhite ? north(pawns) & enemyPieces : south(pawns) & enemyPieces;
 }
-int blockage(const chess::Board& board){
+int blockage(chess::Board board){
     return POPCOUNT64(getBlockedPawns(board.pieces(chess::PieceType::underlying::PAWN,board.sideToMove()).getBits(),board.them(board.sideToMove()).getBits(),(int)board.sideToMove()))*5;
 }
 
@@ -73,7 +73,7 @@ inline U64 getHangingPawns(U64 pawns, U64 friendlyPieces) {
     return pawns & ~defended;
 }
 
-int pawnIslands(const chess::Board& board){
+int pawnIslands(chess::Board board){
     
     int islands = 0;
     U64 remaining = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
@@ -97,10 +97,10 @@ inline U64 getDoublyIsolatedPawns(U64 pawns) {
     U64 isolated = getIsolatedPawns(pawns);
     return isolated & (isolated - 1); // More than one isolated pawn in a file
 }
-int isolated(const chess::Board& board){
+int isolated(chess::Board board){
     return POPCOUNT64(getIsolatedPawns(board.pieces(chess::PieceType::underlying::PAWN,board.sideToMove()).getBits()))*5;
 }
-int dblisolated(const chess::Board& board){
+int dblisolated(chess::Board board){
     return POPCOUNT64(getDoublyIsolatedPawns(board.pieces(chess::PieceType::underlying::PAWN,board.sideToMove()).getBits()))*10;
 }
 // **2. Holes** (Uncontested squares that cannot be controlled by pawns)
@@ -108,11 +108,11 @@ inline U64 getHoles(U64 whitePawns, U64 blackPawns) {
     U64 pawnControl = north(whitePawns) | south(blackPawns);
     return ~pawnControl; // Holes are squares not controlled by any pawn
 }
-int holes(const chess::Board& board){
+int holes(chess::Board board){
 	return POPCOUNT64(getHoles(board.pieces(chess::PieceType::underlying::PAWN,chess::Color::underlying::WHITE).getBits(),board.pieces(chess::PieceType::underlying::PAWN,chess::Color::underlying::BLACK).getBits()))*5;
 }
 
-int pawnRace(const chess::Board &board) {
+int pawnRace(chess::Board board) {
     U64 myPawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
     int minDistance = 8; // Maximum distance to promotion
     while (myPawns) {
@@ -131,7 +131,7 @@ inline U64 getWeakPawns(U64 pawns, U64 enemyPawns) {
     U64 backward = (north(pawns) & enemyPawns) | (south(pawns) & enemyPawns);
     return isolated | backward; // Any pawn that is weak
 }
-int weaks(const chess::Board &board){
+int weaks(chess::Board board){
     return POPCOUNT64(getWeakPawns(board.pieces(chess::PieceType::underlying::PAWN,board.sideToMove()).getBits(),board.pieces(chess::PieceType::underlying::PAWN,~board.sideToMove()).getBits()))*6;
 }
 inline U64 getKingMobility(U64 king, U64 enemyPieces) {
@@ -140,7 +140,7 @@ inline U64 getKingMobility(U64 king, U64 enemyPieces) {
 
     return mobility & ~enemyPieces; // Remove squares occupied by enemy pieces
 }
-inline bool shouldUnderpromote(U64 pawn, U64 enemyKing, bool isWhite, U64 enemyPieces, U64 friendlyPieces, U64 promotionSquare, int gamePhase) {
+inline bool shouldUnderpromote(U64 pawn, U64 enemyKing, bool isWhite, U64 enemyPieces, U64 friendlyPieces, chess::Square promotionSquare, int gamePhase) {
     U64 kingZone = north(enemyKing) | south(enemyKing) | east(enemyKing) | west(enemyKing);
 
     // **1. Stalemate Prevention**
@@ -148,14 +148,14 @@ inline bool shouldUnderpromote(U64 pawn, U64 enemyKing, bool isWhite, U64 enemyP
     if (kingMobility == 0) return true; // If enemy king has no legal moves → underpromotion is preferred
 
     // **2. Tactical Fork or Mating Net Check (Knight Promotions)**
-    if (promotionSquare) {
+    if (chess::Square::back_rank(promotionSquare,chess::Color(isWhite))) {
         U64 knightAttacks = getKnightAttacks(promotionSquare);
         if (knightAttacks & enemyKing) return true; // If knight promotes with a check/fork, prefer underpromotion
     }
 
     // **3. Underpromotion in the Opening (Forcing Move Continuation)**
     if (gamePhase == 1) { // Opening phase
-        if (promotionSquare & enemyPieces) return true; // If underpromotion maintains initiative
+        if (chess::Bitboard(1ULL<<promotionSquare.index()) & enemyPieces) return true; // If underpromotion maintains initiative
     }
 
     // **4. Endgame Underpromotion to Avoid Immediate Loss**
@@ -170,7 +170,8 @@ inline bool shouldUnderpromote(U64 pawn, U64 enemyKing, bool isWhite, U64 enemyP
 
     return false; // Default: Queen promotion is optimal
 }
-int underpromote(chess::Board& board) {
+int underpromote(chess::Board board) {
+    if (board.move_stack.empty()) return 0; // No moves to undo → no underpromotion
     chess::Move move = board.pop();
 
     // Ensure move is valid
@@ -194,7 +195,6 @@ int underpromote(chess::Board& board) {
     U64 enemyKingBB = 1ULL << board.kingSq(~board.sideToMove()).index();
     U64 enemyPieces = board.them(board.sideToMove()).getBits();
     U64 friendlyPieces = board.us(board.sideToMove()).getBits();
-    U64 promotionSquare = 1ULL << move.to().index();
     bool isWhite = (board.sideToMove() == chess::Color::WHITE);
 
     // Calculate game phase
@@ -203,7 +203,7 @@ int underpromote(chess::Board& board) {
     // Correct function call
     bool shouldUnderpromoteResult = shouldUnderpromote(
         pawnBB, enemyKingBB, isWhite, enemyPieces, 
-        friendlyPieces, promotionSquare, gamePhase
+        friendlyPieces, move.to(), gamePhase
     );
 
     board.makeMove(move);
@@ -217,14 +217,14 @@ int underpromote(chess::Board& board) {
 inline U64 getColorWeakness(U64 pawns) {
     return ~((pawns & DARK_SQUARES) | (pawns & LIGHT_SQUARES)); // Weak squares
 }
-int weakness(const chess::Board& board){
+int weakness(chess::Board board){
     return POPCOUNT64(getColorWeakness(board.pieces(chess::PieceType::underlying::PAWN,board.sideToMove()).getBits()))*10;
 }
 // **5. Pawn Shield (King Protection by Pawns)**
 inline U64 getPawnShield(U64 king, U64 pawns, bool isWhite) {
     return isWhite ? (north(king) & pawns) : (south(king) & pawns);
 }
-int pawnShield(const chess::Board &board){
+int pawnShield(chess::Board board){
     return POPCOUNT64(getPawnShield(1ULL<<board.kingSq(board.sideToMove()).index(),board.pieces(chess::PieceType::underlying::PAWN,board.sideToMove()).getBits(),(int)board.sideToMove()))*5;
 }
 
@@ -258,37 +258,37 @@ inline U64 getOpenPawns(U64 pawns, U64 enemyPawns) {
     return pawns & ~(north(pawns) & enemyPawns); // No enemy directly in front
 }
 
-int pawnStorm(const chess::Board &board) {
+int pawnStorm(chess::Board board) {
     U64 myPawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
     U64 storm = board.sideToMove() ? north(myPawns) | north(north(myPawns))
                                   : south(myPawns) | south(south(myPawns));
     return POPCOUNT64(storm) * 5; // Bonus for aggressive pawn pushes
 }
 
-int pawnLevers(const chess::Board &board) {
+int pawnLevers(chess::Board board) {
     U64 myPawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
     U64 enemyPawns = board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits();
     return POPCOUNT64(getPawnLevers(myPawns, enemyPawns)) * 5; // Bonus for break opportunities
 }
 
-int outpost(const chess::Board &board) {
+int outpost(chess::Board board) {
     U64 myKnights = board.pieces(chess::PieceType::KNIGHT, board.sideToMove()).getBits();
     U64 myPawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
     return POPCOUNT64(getOutposts(myKnights, myPawns, board.sideToMove())) * 10; // Reward strong knights
 }
-int evaluatePawnRams(const chess::Board& board) {
+int evaluatePawnRams(chess::Board board) {
     return POPCOUNT64(getPawnRams(
         board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits(),
         board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits())) * 5;
 }
 
-int evaluateUnfreePawns(const chess::Board& board) {
+int evaluateUnfreePawns(chess::Board board) {
     return POPCOUNT64(getUnfreePawns(
         board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits(),
         board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits())) * 7;
 }
 
-int evaluateOpenPawns(const chess::Board& board) {
+int evaluateOpenPawns(chess::Board board) {
     return POPCOUNT64(getOpenPawns(
         board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits(),
         board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits())) * 3;
