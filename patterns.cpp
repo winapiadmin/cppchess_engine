@@ -114,54 +114,84 @@ int evaluateTactics(const chess::Board& board) {
     if (tacticsCache.find(hash) != tacticsCache.end()) return tacticsCache[hash];
 
     int score = 0;
-
-    chess::Square myKing = board.kingSq(board.sideToMove());
-    chess::Square enemyKing = board.kingSq(~board.sideToMove());
+    U64 myPieces = board.us(board.sideToMove()).getBits();
+    U64 enemyPieces = board.them(board.sideToMove()).getBits();
 
     // **1. Pin Check**
-    for (chess::Square pieceSq : scan_reversed(board.us(board.sideToMove()).getBits())) {
-        if (isPinned(const_cast<chess::Board&>(board), pieceSq)) score -= 30;
+    U64 pinnedPieces = myPieces; // Cache the bitboard
+    while (pinnedPieces) {
+        int pieceSq = __builtin_ctzll(pinnedPieces);
+        pinnedPieces &= pinnedPieces - 1;
+        if (isPinned(const_cast<chess::Board&>(board), chess::Square(pieceSq))) {
+            score -= 30;
+        }
     }
 
-    // **2. Skewer Check** (Updated)
-    for (chess::Square attackerSq : scan_reversed(board.pieces(chess::PieceType::ROOK, board.sideToMove()).getBits() |
-                                                  board.pieces(chess::PieceType::QUEEN, board.sideToMove()).getBits())) {
-        for (chess::Square targetSq : scan_reversed(board.them(board.sideToMove()).getBits())) {
-            for (chess::Square behindTargetSq : scan_reversed(board.them(board.sideToMove()).getBits())) {
-                if (isSkewer(1ULL<<attackerSq.index(), 1ULL<<targetSq.index(), 1ULL<<behindTargetSq.index())) {
-                    score += 40;  // Skewer usually wins material
+    // **2. Skewer Check** (Optimized)
+    U64 skewerAttackers = board.pieces(chess::PieceType::ROOK, board.sideToMove()).getBits() |
+                          board.pieces(chess::PieceType::QUEEN, board.sideToMove()).getBits();
+    while (skewerAttackers) {
+        int attackerSq = __builtin_ctzll(skewerAttackers);
+        skewerAttackers &= skewerAttackers - 1;
+
+        U64 targetPieces = enemyPieces;  // Cache enemy bitboard
+        while (targetPieces) {
+            int targetSq = __builtin_ctzll(targetPieces);
+            targetPieces &= targetPieces - 1;
+
+            U64 behindTarget = enemyPieces;
+            while (behindTarget) {
+                int behindTargetSq = __builtin_ctzll(behindTarget);
+                behindTarget &= behindTarget - 1;
+
+                if (isSkewer(1ULL << attackerSq, 1ULL << targetSq, 1ULL << behindTargetSq)) {
+                    score += 40;
                 }
             }
         }
     }
 
-    // **3. Discovered Attack Check** (Updated)
-    for (chess::Square movingSq : scan_reversed(board.us(board.sideToMove()).getBits())) {
-        for (chess::Square attackerSq : scan_reversed(board.pieces(chess::PieceType::underlying::ROOK, board.sideToMove()).getBits() |
-                                                      board.pieces(chess::PieceType::underlying::BISHOP, board.sideToMove()).getBits() |
-                                                      board.pieces(chess::PieceType::underlying::QUEEN, board.sideToMove()).getBits())) {
-            for (chess::Square targetSq : scan_reversed(board.them(board.sideToMove()).getBits())) {
-                if (isDiscoveredAttack(1ULL<<movingSq.index(), 1ULL<<attackerSq.index(), 1ULL<<targetSq.index())) {
-                    score += 30;  // Discovered attacks are strong
-                }
+    // **3. Discovered Attack Check (Optimized)**
+    U64 mySlidingPieces = board.pieces(chess::PieceType::ROOK, board.sideToMove()).getBits() |
+                          board.pieces(chess::PieceType::BISHOP, board.sideToMove()).getBits() |
+                          board.pieces(chess::PieceType::QUEEN, board.sideToMove()).getBits();
+    while (mySlidingPieces) {
+        int attackerSq = __builtin_ctzll(mySlidingPieces);
+        mySlidingPieces &= mySlidingPieces - 1;
+
+        U64 targets = enemyPieces;
+        while (targets) {
+            int targetSq = __builtin_ctzll(targets);
+            targets &= targets - 1;
+
+            if (isDiscoveredAttack(1ULL << attackerSq, 1ULL << attackerSq, 1ULL << targetSq)) {
+                score += 30;
             }
         }
     }
 
-    // **4. X-Ray Attack**
-    for (chess::Square pieceSq : scan_reversed(board.pieces(chess::PieceType::underlying::ROOK, board.sideToMove()).getBits() |
-                                               board.pieces(chess::PieceType::underlying::QUEEN, board.sideToMove()).getBits())) {
-        for (chess::Square enemyPieceSq : scan_reversed(board.them(board.sideToMove()).getBits())) {
-            if (isXRayAttack(board.pieces(chess::PieceType::underlying::QUEEN, board.sideToMove()).getBits(),
-                             board.pieces(chess::PieceType::underlying::ROOK, board.sideToMove()).getBits(),
-                             1ULL<<enemyPieceSq.index())) {
+    // **4. X-Ray Attack Check**
+    U64 xRayPieces = board.pieces(chess::PieceType::ROOK, board.sideToMove()).getBits() |
+                     board.pieces(chess::PieceType::QUEEN, board.sideToMove()).getBits();
+    while (xRayPieces) {
+        int pieceSq = __builtin_ctzll(xRayPieces);
+        xRayPieces &= xRayPieces - 1;
+
+        U64 enemyTargets = enemyPieces;
+        while (enemyTargets) {
+            int enemyPieceSq = __builtin_ctzll(enemyTargets);
+            enemyTargets &= enemyTargets - 1;
+
+            if (isXRayAttack(1ULL << pieceSq, 1ULL << enemyPieceSq, 1ULL << board.kingSq(~board.sideToMove()).index())) {
                 score += 10;
             }
         }
     }
+
     tacticsCache[hash] = score;
     return score;
 }
+
 
 // **8. King Patterns (Mobility & Escape Routes)**
 inline U64 getKingMobility(U64 king, U64 friendlyPieces) {

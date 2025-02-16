@@ -6,9 +6,8 @@ std::unordered_map<U64, int> transposition;  // Faster lookup
 int evaluatePawnStructure(const chess::Board& board);
 int evaluatePieces(const chess::Board& board);
 
-int eval(const chess::Board& board) {
+int eval(chess::Board &board) {
     U64 hash = board.hash();
-
     // Faster lookup & insertion
     auto [it, inserted] = transposition.emplace(hash, 0);
     if (!inserted) return it->second;  // Already exists, return stored evaluation
@@ -36,13 +35,19 @@ int eval(const chess::Board& board) {
                (Bishop * (pieceCount[2] - pieceCount[7])) +
                (Rook * (pieceCount[3] - pieceCount[8])) +
                (Queen * (pieceCount[4] - pieceCount[9]));
-
+    
     // Evaluate positional aspects
     eval += evaluatePawnStructure(board);
     eval += evaluatePieces(board);
     eval += evaluateKingSafety(board);
     eval += evaluateTactics(board);
-
+    board.makeNullMove();
+    // Evaluate positional aspects
+    eval -= evaluatePawnStructure(board);
+    eval -= evaluatePieces(board);
+    eval -= evaluateKingSafety(board);
+    eval -= evaluateTactics(board);
+    board.unmakeNullMove();
     it->second = eval;  // Store result
     return eval;
 }
@@ -61,3 +66,4 @@ int evaluatePieces(const chess::Board& board) {
     return -(evaluateBadBishops(board) + evaluateTrappedPieces(board) + evaluateKnightForks(board)) +
            (evaluateFianchetto(board) + evaluateRooksOnFiles(board));
 }
+
