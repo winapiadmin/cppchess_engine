@@ -1,6 +1,6 @@
 # Compiler and Flags
 CXX = g++
-CXXFLAGS = -march=native -mtune=native -msse4.2 -std=c++17 $(FLAGS)
+CXXFLAGS = -march=native -mtune=native -msse4.2 -std=c++17 $(FLAGS) -DNDEBUG
 
 # Source files and object files
 SRC = main.cpp eval.cpp search.cpp pieces.cpp pawns.cpp patterns.cpp

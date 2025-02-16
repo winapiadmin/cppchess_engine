@@ -1,7 +1,9 @@
 #include "eval.h"
 
-
+std::map<unsigned long long, int> transposition;
 int eval(chess::Board board){
+    if (transposition.count(board.hash())) return transposition[board.hash()];
+    U64 hash=board.hash();
 	//Game over
 	if (board.inCheck()&&board.isGameOver().first!=chess::GameResultReason::NONE)return MAX;
 	else if (board.isGameOver().first!=chess::GameResultReason::NONE)return 0;
@@ -44,7 +46,7 @@ int eval(chess::Board board){
     eval += evaluateKingMobility(board);
     eval += evaluateSpaceControl(board);
     eval -= evaluateTactics(board);
-    board.makeNullMove();
+    board.pop();
     eval -= -isolated(board);
 	eval -= -dblisolated(board);
 	eval -= -weaks(board);
@@ -71,6 +73,6 @@ int eval(chess::Board board){
     eval += -evaluateKingMobility(board);
     eval += -evaluateSpaceControl(board);
     eval -= -evaluateTactics(board);
-    board.unmakeNullMove();
+    transposition[hash]=eval;
 	return eval;
 }

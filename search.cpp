@@ -30,6 +30,12 @@ chess::Movelist order_moves(const chess::Board board,bool capturesonly=false) {
     		score-=piece_value(from);
     	vec.push_back({move,score});
     }
+    // Sort the vector by the second element (the value)
+    std::sort(vec.begin(), vec.end(), [](const auto& a, const auto& b) {
+        return a.second < b.second; // Sort in ascending order
+    });
+    for (std::pair<chess::Move,int> p:vec)moves.add(p.first);
+    vec.clear();
     if (!capturesonly)
 		for (int i = 0; i < quiet_moves.size(); i++) {
     		int score=0;
@@ -53,7 +59,7 @@ int calculateExtensions(const chess::Board &board){
 	if (board.inCheck())exts++;
 	return exts;	
 }
-int searchcaptures(chess::Board board, int alpha, int beta) {
+int searchcaptures(chess::Board &board, int alpha, int beta) {
     if (board.isGameOver().first!=chess::GameResultReason::NONE) {
         return eval(board);
     }
@@ -70,7 +76,7 @@ int searchcaptures(chess::Board board, int alpha, int beta) {
         nodes++;
         score = -searchcaptures(board, -beta, -alpha);
         if (std::abs(score)>=MAX_MATE)score=(score<0?-1:1)*MATE(abs(score)+1);
-        board.unmakeMove(move);
+        board.pop();
         if (score>=beta) {
             return beta; // Beta cutoff
         }
@@ -79,7 +85,7 @@ int searchcaptures(chess::Board board, int alpha, int beta) {
 
     return alpha;
 }
-int search(chess::Board board, int depth, int alpha, int beta) {
+int search(chess::Board &board, int depth, int alpha, int beta) {
     if (depth == 0) {
         return searchcaptures(board,alpha,beta);
     }

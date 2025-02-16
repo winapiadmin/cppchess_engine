@@ -21,7 +21,7 @@ inline bool isDiscoveredAttack(U64 movingPiece, U64 attacker, U64 target) {
 inline bool isXRayAttack(U64 attacker, U64 blocker, U64 target) {
     return (attacker & blocker) && (attacker & target);
 }
-inline bool isTrappedPiece(const chess::Board board, chess::Square pieceSq) {
+inline bool isTrappedPiece(const chess::Board& board, chess::Square pieceSq) {
     chess::Piece piece = board.at(pieceSq);
     if (piece == chess::Piece::NONE) return false; // No piece → not trapped
 
@@ -85,7 +85,7 @@ inline bool isTrappedPiece(const chess::Board board, chess::Square pieceSq) {
 }
 
 
-inline bool isPinned(chess::Board board, chess::Square pieceSq) {
+inline bool isPinned(chess::Board& board, chess::Square pieceSq) {
     chess::Color side = board.at(pieceSq).color();
     chess::Square kingSq = board.kingSq(side);
 
@@ -96,7 +96,7 @@ inline bool isPinned(chess::Board board, chess::Square pieceSq) {
     return isPinned;
 }
 
-int evaluateTactics(const chess::Board board) {
+int evaluateTactics(const chess::Board& board) {
     int score = 0;
 
     chess::Square myKing = board.kingSq(board.sideToMove());
@@ -104,7 +104,7 @@ int evaluateTactics(const chess::Board board) {
 
     // **1. Pin Check**
     for (chess::Square pieceSq : scan_reversed(board.us(board.sideToMove()).getBits())) {
-        if (isPinned(board, pieceSq)) score -= 30;
+        if (isPinned(const_cast<chess::Board&>(board), pieceSq)) score -= 30;
     }
 
     // **2. Skewer Check** (Updated)
