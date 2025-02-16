@@ -1,78 +1,63 @@
 #include "eval.h"
 
-std::map<unsigned long long, int> transposition;
-int eval(chess::Board board){
-    if (transposition.count(board.hash())) return transposition[board.hash()];
-    U64 hash=board.hash();
-	//Game over
-	if (board.inCheck()&&board.isGameOver().first!=chess::GameResultReason::NONE)return MAX;
-	else if (board.isGameOver().first!=chess::GameResultReason::NONE)return 0;
-	int eval=0;
-	//Material
-	eval+=Pawn*board.pieces(chess::PieceType::underlying::PAWN,chess::Color::underlying::WHITE).count();
-	eval+=Knight*board.pieces(chess::PieceType::underlying::KNIGHT,chess::Color::underlying::WHITE).count();
-	eval+=Bishop*board.pieces(chess::PieceType::underlying::BISHOP,chess::Color::underlying::WHITE).count();
-	eval+=Rook*board.pieces(chess::PieceType::underlying::ROOK,chess::Color::underlying::WHITE).count();
-	eval+=Queen*board.pieces(chess::PieceType::underlying::QUEEN,chess::Color::underlying::WHITE).count();
-	eval-=Pawn*board.pieces(chess::PieceType::underlying::PAWN,chess::Color::underlying::BLACK).count();
-	eval-=Knight*board.pieces(chess::PieceType::underlying::KNIGHT,chess::Color::underlying::BLACK).count();
-	eval-=Bishop*board.pieces(chess::PieceType::underlying::BISHOP,chess::Color::underlying::BLACK).count();
-	eval-=Rook*board.pieces(chess::PieceType::underlying::ROOK,chess::Color::underlying::BLACK).count();
-	eval-=Queen*board.pieces(chess::PieceType::underlying::QUEEN,chess::Color::underlying::BLACK).count();
-	//Pawns
-	eval -= isolated(board);
-	eval -= dblisolated(board);
-	eval -= weaks(board);
-    eval -= blockage(board);
-    eval += pawnIslands(board);
-    eval -= holes(board);
-    eval += pawnRace(board);
-    eval -= underpromote(board);
-    eval -= weakness(board);
-    eval += pawnShield(board);
-    eval += pawnStorm(board);
-    eval += pawnLevers(board);
-    eval += outpost(board);
-    eval -= evaluatePawnRams(board);
-    eval += evaluateUnfreePawns(board);
-    eval += evaluateOpenPawns(board);
-    eval -= evaluateBadBishops(board);
-    eval += evaluateFianchetto(board);
-    eval -= evaluateTrappedPieces(board);
-    eval -= evaluateKnightForks(board);
-    eval += evaluateRooksOnFiles(board);
+std::unordered_map<U64, int> transposition;  // Faster lookup
+
+// Declare only missing functions
+int evaluatePawnStructure(const chess::Board& board);
+int evaluatePieces(const chess::Board& board);
+
+int eval(const chess::Board& board) {
+    U64 hash = board.hash();
+
+    // Faster lookup & insertion
+    auto [it, inserted] = transposition.emplace(hash, 0);
+    if (!inserted) return it->second;  // Already exists, return stored evaluation
+
+    if (board.inCheck() && board.isGameOver().first != chess::GameResultReason::NONE) return MAX;
+    if (board.isGameOver().first != chess::GameResultReason::NONE) return 0;
+
+    // Precompute piece counts (avoid multiple function calls)
+    int pieceCount[10] = {
+        board.pieces(chess::PieceType::PAWN, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::ROOK, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::QUEEN, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::PAWN, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::KNIGHT, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::ROOK, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::QUEEN, chess::Color::BLACK).count(),
+    };
+
+    // Compute material score
+    int eval = (Pawn * (pieceCount[0] - pieceCount[5])) +
+               (Knight * (pieceCount[1] - pieceCount[6])) +
+               (Bishop * (pieceCount[2] - pieceCount[7])) +
+               (Rook * (pieceCount[3] - pieceCount[8])) +
+               (Queen * (pieceCount[4] - pieceCount[9]));
+
+    // Evaluate positional aspects
+    eval += evaluatePawnStructure(board);
+    eval += evaluatePieces(board);
     eval += evaluateKingSafety(board);
-    eval += evaluateKingPawnTropism(board);
-    eval += evaluateKingMobility(board);
-    eval += evaluateSpaceControl(board);
-    eval -= evaluateTactics(board);
-    board.pop();
-    eval -= -isolated(board);
-	eval -= -dblisolated(board);
-	eval -= -weaks(board);
-    eval -= -blockage(board);
-    eval += -pawnIslands(board);
-    eval -= -holes(board);
-    eval += -pawnRace(board);
-    eval -= -underpromote(board);
-    eval -= -weakness(board);
-    eval += -pawnShield(board);
-    eval += -pawnStorm(board);
-    eval += -pawnLevers(board);
-    eval += -outpost(board);
-    eval -= -evaluatePawnRams(board);
-    eval += -evaluateUnfreePawns(board);
-    eval += -evaluateOpenPawns(board);
-    eval -= -evaluateBadBishops(board);
-    eval += -evaluateFianchetto(board);
-    eval -= -evaluateTrappedPieces(board);
-    eval -= -evaluateKnightForks(board);
-    eval += -evaluateRooksOnFiles(board);
-    eval += -evaluateKingSafety(board);
-    eval += -evaluateKingPawnTropism(board);
-    eval += -evaluateKingMobility(board);
-    eval += -evaluateSpaceControl(board);
-    eval -= -evaluateTactics(board);
-    transposition[hash]=eval;
-	return eval;
+    eval += evaluateTactics(board);
+
+    it->second = eval;  // Store result
+    return eval;
+}
+
+// Use `const chess::Board&` to avoid copies
+int evaluatePawnStructure(const chess::Board& board) {
+    chess::Board b=board;
+    return -(isolated(board) + dblisolated(board) + weaks(board) + blockage(board) +
+             holes(board) + underpromote(b) + weakness(board) + evaluatePawnRams(board)) +
+           (pawnIslands(board) + pawnRace(board) + pawnShield(board) + pawnStorm(board) +
+            pawnLevers(board) + outpost(board) + evaluateUnfreePawns(board) + evaluateOpenPawns(board));
+}
+
+// Use `const chess::Board&` to avoid copies
+int evaluatePieces(const chess::Board& board) {
+    return -(evaluateBadBishops(board) + evaluateTrappedPieces(board) + evaluateKnightForks(board)) +
+           (evaluateFianchetto(board) + evaluateRooksOnFiles(board));
 }

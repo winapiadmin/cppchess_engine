@@ -131,6 +131,7 @@ namespace utils {
 // Split a string by a delimiter
 [[nodiscard]] inline std::vector<std::string_view> splitString(std::string_view string, const char &delimiter) {
     std::vector<std::string_view> result;
+    result.reserve(100);
     size_t start = 0;
     size_t end   = string.find(delimiter);
 
@@ -1824,6 +1825,7 @@ class Board {
     std::vector<Move> move_stack;
     explicit Board(std::string_view fen = constants::STARTPOS, bool chess960 = false) {
         prev_states_.reserve(256);
+        move_stack.reserve(200);
         chess960_ = chess960;
         setFenInternal<true>(fen);
     }

@@ -209,9 +209,12 @@ std::vector<Square> scan_reversed(Bitboard bb)
 #endif
     return iter;
 }
+std::unordered_map<U64, int> bishopCache;
 
 // **1. Evaluate Bad Bishops**
 int evaluateBadBishops(const chess::Board& board) {
+    U64 hash = board.hash();
+    if (bishopCache.find(hash) != bishopCache.end()) return bishopCache[hash];
     U64 myBishops = board.pieces(chess::PieceType::underlying::BISHOP, board.sideToMove()).getBits();
     U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
     
@@ -223,9 +226,9 @@ int evaluateBadBishops(const chess::Board& board) {
             score -= 10; // Penalty for bad bishop
         }
     }
+    bishopCache[hash] = score;
     return score;
 }
-
 // **2. Evaluate King Safety**
 int evaluateKingSafety(const chess::Board& board) {
     U64 king = 1ULL << board.kingSq(board.sideToMove()).index();

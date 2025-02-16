@@ -37,41 +37,54 @@ inline bool isTrappedPiece(const chess::Board& board, chess::Square pieceSq) {
         return true;
     }
 
+    // A knight is trapped if it has **no safe squares to jump to**
+    U64 pieceBB = 1ULL << pieceSq.index();  // Precompute once
+	U64 knightAttacks = getKnightAttacks(pieceBB, board.occ()), bishopAttacks=getBishopAttacks(pieceSq, board.occ()),
+	    rookAttacks = getRookAttacks(1ULL<<pieceSq.index(), board.occ()), queenAttacks=getQueenAttacks(pieceSq, board.occ());
+	chess::Piece p;
     // **3. Special Conditions for Specific Pieces**
     switch (type) {
         case chess::KNIGHT:
-            // A knight is trapped if it has **no safe squares to jump to**
-            for (chess::Square sq : scan_reversed(getKnightAttacks(1ULL << pieceSq.index(),board.occ()))) {
-                if (board.at(sq) == chess::Piece::NONE || board.at(sq).color() != side) {
+			while (knightAttacks) {
+    			int sq = __builtin_ctzll(knightAttacks);  // Extract LSB (fast)
+    			p=board.at(sq);
+                if (p == chess::Piece::NONE || p.color() != side) {
                     return false; // The knight has a safe escape
                 }
-            }
+    			knightAttacks &= knightAttacks - 1;  // Remove LSB
+			}
             return true;
 
         case chess::BISHOP:
-            // A bishop is trapped if **all diagonal escape squares are blocked**
-            for (chess::Square sq : scan_reversed(getBishopAttacks(pieceSq, board.occ()))) {
-                if (board.at(sq) == chess::Piece::NONE || board.at(sq).color() != side) {
+			while (bishopAttacks) {
+    			int sq = __builtin_ctzll(bishopAttacks);  // Extract LSB (fast)
+    			p=board.at(sq);
+                if (p == chess::Piece::NONE || p.color() != side) {
                     return false;
                 }
-            }
+    			bishopAttacks &= bishopAttacks - 1;  // Remove LSB
+			}
             return true;
 
         case chess::ROOK:
-            // A rook is trapped if **all rank/file escape squares are blocked**
-            for (chess::Square sq : scan_reversed(getRookAttacks(1ULL<<pieceSq.index(), board.occ()))) {
-                if (board.at(sq) == chess::Piece::NONE || board.at(sq).color() != side) {
+			while (rookAttacks) {
+    			int sq = __builtin_ctzll(rookAttacks);  // Extract LSB (fast)
+    			p=board.at(sq);
+                if (p == chess::Piece::NONE || p.color() != side) {
                     return false;
                 }
+    			rookAttacks &= rookAttacks - 1;  // Remove LSB
             }
             return true;
 
         case chess::QUEEN:
-            // A queen is trapped if **both bishop and rook movements are blocked**
-            for (chess::Square sq : scan_reversed(getQueenAttacks(pieceSq, board.occ()))) {
-                if (board.at(sq) == chess::Piece::NONE || board.at(sq).color() != side) {
+			while (queenAttacks) {
+    			int sq = __builtin_ctzll(queenAttacks);  // Extract LSB (fast)
+    			p=board.at(sq);
+                if (p == chess::Piece::NONE || p.color() != side) {
                     return false;
                 }
+    			queenAttacks &= queenAttacks - 1;  // Remove LSB
             }
             return true;
 
@@ -95,8 +108,11 @@ inline bool isPinned(chess::Board& board, chess::Square pieceSq) {
 
     return isPinned;
 }
-
+std::unordered_map<U64, int> tacticsCache;
 int evaluateTactics(const chess::Board& board) {
+    U64 hash = board.hash();
+    if (tacticsCache.find(hash) != tacticsCache.end()) return tacticsCache[hash];
+
     int score = 0;
 
     chess::Square myKing = board.kingSq(board.sideToMove());
@@ -143,15 +159,14 @@ int evaluateTactics(const chess::Board& board) {
             }
         }
     }
+    tacticsCache[hash] = score;
     return score;
 }
-
 
 // **8. King Patterns (Mobility & Escape Routes)**
 inline U64 getKingMobility(U64 king, U64 friendlyPieces) {
     return (king << 8 | king >> 8 | king << 1 | king >> 1) & ~friendlyPieces;
 }
-
 bool isLosingQueenPromotion(int pawn, U64 enemyKing, U64 enemyPieces, U64 friendlyPieces) {    
     // **1. Stalemate Check**
     U64 kingMobility = getKingMobility(enemyKing, enemyPieces | friendlyPieces);
