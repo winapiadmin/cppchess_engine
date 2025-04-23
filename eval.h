@@ -1,6 +1,5 @@
 #pragma once
 #include "chess.hpp"
-<<<<<<< HEAD
 #include <map>
 #include <vector>
 #include <cstdint>
@@ -139,19 +138,3 @@ inline U64 southWest(U64 b) { return (b & ~FILE_A) >> 9; }
 #define MATE_DISTANCE(i) (i-MAX_MATE)
 int eval(chess::Position);
 int piece_value(chess::PieceType piece);
-=======
-#include "patterns.h"
-#include "pieces.h"
-#include <map>
-#include <vector>
-#define MAX 32767 // for black
-#define MAX_MATE 32000
-#define Pawn 100
-#define Knight 300
-#define Bishop 300
-#define Rook 500
-#define Queen 900
-#define MATE(i) MAX-i
-#define MATE_DISTANCE(i) i-MAX_MATE
-int eval(chess::Board&);
->>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
