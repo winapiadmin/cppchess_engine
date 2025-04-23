@@ -1,12 +1,9 @@
 #pragma once
+//A weird header? but when remove it failes.
 #include "chess.hpp"
-<<<<<<< HEAD
-#include <map>
-#include <vector>
 #include <cstdint>
-#if __cplusplus >= 202002L
-    #define POPCOUNT64(bits) std::popcount(bits);
-#elif defined(USE_POPCNT)
+#include <vector>
+#ifdef USE_POPCNT
 	#if defined(__GNUC__) || defined(__clang__)
 		#define POPCOUNT64(x) __builtin_popcountll(x)
 	#elif defined(_MSC_VER)
@@ -16,7 +13,7 @@
     	#include <immintrin.h>
     	#define POPCOUNT64(x) _popcnt64(x)
 	#else
-    	#error "Use C++20, it provides popcount"
+    	#error "POPCOUNT64 is not supported on this compiler even if USE_POPCNT is defined"
 	#endif
 #else
     // Fallback manual implementation using Brian Kernighan's Algorithm
@@ -31,14 +28,10 @@
     #define POPCOUNT64(x) popcount(x)
 #endif
 #define countBits POPCOUNT64
-
-#if __cplusplus >= 202002L
-    #define lsb(bits) std::countl_zero(bits) ^ 63;
-#elif defined(__GNUC__) || defined(__clang__)
-    #define lsb __builtin_ctzll
+#if defined(__GNUC__) || defined(__clang__)
 #elif defined(_MSC_VER) // MSVC compiler
 	// Cross-platform implementation of __builtin_ctzll
-	inline int lsb(uint64_t x) {
+	inline int __builtin_ctzll(uint64_t x) {
     	if (x == 0) return 64; // Undefined behavior for 0, return max bits
     	
         unsigned long index;
@@ -65,7 +58,7 @@
     	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 	};
 	
-	uint64_t lsb(uint64_t x) {
+	uint64_t __builtin_ctzll(uint64_t x) {
     	uint8_t *bytes = (uint8_t *)&x;
     	int i;
     	for (i = 0; i < 8; i++) {
@@ -75,32 +68,8 @@
     	}
     	return 64;
 	}
+	
 #endif
-namespace chess{
-	class Position : public Board {
-   	public:
-    	Position() : Board() {}
-    	Position(std::string_view fen) : Board(fen) {}
-	
-    	void makeMove(const Move& move) {
-        	move_stack.push_back(move);
-        	Board::makeMove(move);
-    	}
-	
-    	Move pop() {
-        	if (move_stack.empty()) {
-            	throw std::runtime_error("No moves to undo");
-        	}
-	
-        	const auto& move = move_stack.back();
-        	Board::unmakeMove(move);
-        	move_stack.pop_back();
-        	return move;
-    	}
-    	std::vector<Move> move_stack;
-	};
-}
-
 using U64 = uint64_t;
 
 // Constants for board files
@@ -116,6 +85,7 @@ constexpr U64 FILE_H = FILE_A << 7,           RANK_8 = RANK_7 << 8;
 constexpr U64 FILES[8] = {FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H};
 typedef unsigned long long Bitboard;
 typedef char Square;
+std::vector<Square> scan_reversed(Bitboard bb);
 
 // Shift functions for pawn movement
 inline U64 north(U64 b) { return b << 8; }
@@ -128,30 +98,7 @@ inline U64 southEast(U64 b) { return (b & ~FILE_H) >> 7; }
 inline U64 southWest(U64 b) { return (b & ~FILE_A) >> 9; }
 #define getQueenAttacks(a,b) chess::attacks::queen(a,b).getBits()
 #define getKnightAttacks(a,...) chess::attacks::knight(a).getBits()
-#define getKingAttacks(a,friendlyPieces) (chess::attacks::king(a).getBits()&~(friendlyPieces))
+#define getKingAttacks(a,friendlyPieces) chess::attacks::king(a).getBits()&~friendlyPieces
 #define getRookAttacks(a,b) chess::attacks::rook(a,b).getBits()
 #define getBishopAttacks(a,b) chess::attacks::bishop(a,b).getBits()
-#define getPawnAttacks(a,b) chess::attacks::pawn(a,b).getBits()
-#define MAX_PLY 245
-#define MAX 32767 // for black
-#define MAX_MATE 32000
-#define MATE(i) (MAX-i)
-#define MATE_DISTANCE(i) (i-MAX_MATE)
-int eval(chess::Position);
-int piece_value(chess::PieceType piece);
-=======
-#include "patterns.h"
-#include "pieces.h"
-#include <map>
-#include <vector>
-#define MAX 32767 // for black
-#define MAX_MATE 32000
-#define Pawn 100
-#define Knight 300
-#define Bishop 300
-#define Rook 500
-#define Queen 900
-#define MATE(i) MAX-i
-#define MATE_DISTANCE(i) i-MAX_MATE
-int eval(chess::Board&);
->>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
+#define getQueenAttacks(a,b) chess::attacks::queen(a,b).getBits()

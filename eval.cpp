@@ -1,5 +1,6 @@
 #include "eval.h"
 
+<<<<<<< HEAD
 // Define enum class for evaluation keys
 enum class EvalKey {
     DOUBLED, BACKWARD, BLOCKED, ISLANDED, ISOLATED, DBLISOLATED, WEAK, PAWNRACE,
@@ -1007,6 +1008,15 @@ int psqt_eval(const chess::Position& board) {
 }
 
 int eval(chess::Position board) {
+=======
+std::unordered_map<U64, int> transposition;  // Faster lookup
+
+// Declare only missing functions
+int evaluatePawnStructure(const chess::Board& board);
+int evaluatePieces(const chess::Board& board);
+
+int eval(chess::Board &board) {
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
     U64 hash = board.hash();
     // Faster lookup & insertion
     auto [it, inserted] = transposition.emplace(hash, 0);
@@ -1030,17 +1040,26 @@ int eval(chess::Position board) {
     };
 
     // Compute material score
+<<<<<<< HEAD
     int eval = (EvalWeights::getWeight(EvalKey::PAWN) * (pieceCount[0] - pieceCount[5])) +
                (EvalWeights::getWeight(EvalKey::KNIGHT) * (pieceCount[1] - pieceCount[6])) +
                (EvalWeights::getWeight(EvalKey::BISHOP) * (pieceCount[2] - pieceCount[7])) +
                (EvalWeights::getWeight(EvalKey::ROOK) * (pieceCount[3] - pieceCount[8])) +
                (EvalWeights::getWeight(EvalKey::QUEEN) * (pieceCount[4] - pieceCount[9]));
+=======
+    int eval = (Pawn * (pieceCount[0] - pieceCount[5])) +
+               (Knight * (pieceCount[1] - pieceCount[6])) +
+               (Bishop * (pieceCount[2] - pieceCount[7])) +
+               (Rook * (pieceCount[3] - pieceCount[8])) +
+               (Queen * (pieceCount[4] - pieceCount[9]));
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
     
     // Evaluate positional aspects
     eval += evaluatePawnStructure(board);
     eval += evaluatePieces(board);
     eval += evaluateKingSafety(board);
     eval += evaluateTactics(board);
+<<<<<<< HEAD
     eval += piece_activity(board);
     eval += development(board);
     eval += rook_placement(board);
@@ -1048,12 +1067,15 @@ int eval(chess::Position board) {
     eval += key_center_squares_control(board);
     eval += psqt_eval(board);
     eval += evaluatePieceActivity(board);
+=======
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
     board.makeNullMove();
     // Evaluate positional aspects
     eval -= evaluatePawnStructure(board);
     eval -= evaluatePieces(board);
     eval -= evaluateKingSafety(board);
     eval -= evaluateTactics(board);
+<<<<<<< HEAD
     eval -= piece_activity(board);
     eval -= development(board);
     eval -= rook_placement(board);
@@ -1063,25 +1085,40 @@ int eval(chess::Position board) {
     eval -= evaluatePieceActivity(board);
     board.unmakeNullMove();
     
+=======
+    board.unmakeNullMove();
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
     it->second = eval;  // Store result
     return eval;
 }
 
+<<<<<<< HEAD
 // Use `const chess::Position&` to avoid copies
 int evaluatePawnStructure(const chess::Position& board) {
     chess::Position b=board;
+=======
+// Use `const chess::Board&` to avoid copies
+int evaluatePawnStructure(const chess::Board& board) {
+    chess::Board b=board;
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
     return -(isolated(board) + dblisolated(board) + weaks(board) + blockage(board) +
              holes(board) + underpromote(b) + weakness(board) + evaluatePawnRams(board)) +
            (pawnIslands(board) + pawnRace(board) + pawnShield(board) + pawnStorm(board) +
             pawnLevers(board) + outpost(board) + evaluateUnfreePawns(board) + evaluateOpenPawns(board));
 }
 
+<<<<<<< HEAD
 // Use `const chess::Position&` to avoid copies
 int evaluatePieces(const chess::Position& board) {
+=======
+// Use `const chess::Board&` to avoid copies
+int evaluatePieces(const chess::Board& board) {
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
     return -(evaluateBadBishops(board) + evaluateTrappedPieces(board) + evaluateKnightForks(board)) +
            (evaluateFianchetto(board) + evaluateRooksOnFiles(board));
 }
 
+<<<<<<< HEAD
 int piece_value(chess::PieceType piece) {
     switch (piece) {
         case (int)chess::PieceType::PAWN:   return EvalWeights::getWeight(EvalKey::PAWN);
@@ -1092,3 +1129,5 @@ int piece_value(chess::PieceType piece) {
         default: return 0; // King has no standard value
     }
 }
+=======
+>>>>>>> 08822de3005f1e1458cbbb02037d1f714fcd46e7
