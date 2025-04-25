@@ -1,2 +1,7 @@
 *.o
 chess_engine
+.venv
+!*.*pp
+Makefile
+README.md
+*

@@ -1,7 +1,7 @@
 #include "chess.hpp"
 #include "search.h"
 #include <iostream>
-extern unsigned long long nodes, tthits;
+extern unsigned long long nodes;
 /*chess::Move find_best_move(chess::Board &board, int depth) {
     int bestScore = -MAX;
     chess::Move bestMove;
@@ -26,12 +26,12 @@ extern unsigned long long nodes, tthits;
 
 int main(){
 	chess::Position board("8/2P5/pk1B4/6b1/7p/8/PP3PB1/1K6 b - - 0 40");
-	for (int i=1;i<=254;++i){
+	for (int i=1;i<=MAX_DEPTH;++i){
 		printf("%i ", i);
 		auto s=search(board,i,-MAX,MAX,0);
-		printf("%i %llu %llu\n", s, nodes, tthits);
+		printf("%i %llu\n", s, nodes);
 		printPV(board);
-		nodes=0, tthits=0;
+		nodes=0;
 	}
 	return 0;
 }

@@ -32,9 +32,9 @@
 #define countBits POPCOUNT64
 
 #if __cplusplus >= 202002L
-    #define lsb(bits) std::countl_zero(bits) ^ 63;
+	inline int lsb(uint64_t &p) { return std::countl_zero(p) ^ 63; }
 #elif defined(__GNUC__) || defined(__clang__)
-    #define lsb __builtin_ctzll
+    inline int lsb(uint64_t p){return __builtin_ctzll(p);}
 #elif defined(_MSC_VER) // MSVC compiler
 	// Cross-platform implementation of __builtin_ctzll
 	inline int lsb(uint64_t x) {
@@ -79,8 +79,20 @@ namespace chess{
 	class Position : public Board {
    	public:
     	Position() : Board() {}
+		Position(const chess::Position& other) {
+			Board::operator=(other);
+			move_stack=other.move_stack;
+		}
+		
     	Position(std::string_view fen) : Board(fen) {}
-	
+		Position& operator=(const Position& other) {
+			if (this != &other) {
+				Board::operator=(other);  // Reset the board
+				move_stack=other.move_stack;
+			}
+			return *this;
+		}
+		
     	void makeMove(const Move& move) {
         	move_stack.push_back(move);
         	Board::makeMove(move);
@@ -136,5 +148,5 @@ inline U64 southWest(U64 b) { return (b & ~FILE_A) >> 9; }
 #define MAX_MATE 32000
 #define MATE(i) (MAX-i)
 #define MATE_DISTANCE(i) (i-MAX_MATE)
-int eval(chess::Position);
+int eval(chess::Position&);
 int piece_value(chess::PieceType piece);

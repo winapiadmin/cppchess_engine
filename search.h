@@ -1,5 +1,5 @@
 #pragma once
 #include "eval.h"
 int search(chess::Position&, int, int, int, int);
-inline int evaluate(chess::Position board){return eval(board);}
-void printPV(chess::Position& board);
+void printPV(const chess::Position& board);
+#define MAX_DEPTH 100
