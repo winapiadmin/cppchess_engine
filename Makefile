@@ -13,11 +13,11 @@ all: $(EXEC)
 
 # Linking the object files into the executable
 $(EXEC): $(OBJ)
-	$(CXX) $(CXXFLAGS) -std=c++17 -o $(EXEC) $(OBJ)
+	$(CXX) $(LDFLAGS) -o $(EXEC) $(OBJ)
 
 # Rule to build object files from source files
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -std=c++17 -c $< -o $@
+	$(CXX) $(CXXFLAGS) -DNDEBUG -std=c++17 -c $< -o $@
 
 # Clean up the compiled files
 clean:

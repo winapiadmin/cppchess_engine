@@ -75,6 +75,14 @@
     	return 64;
 	}
 #endif
+#if defined(__GNUC__) || defined(__clang__)
+    #define RESTRICT __restrict__
+#elif defined(_MSC_VER)
+    #define RESTRICT __restrict
+#else
+    #define RESTRICT
+#endif
+
 namespace chess{
 	class Position : public Board {
    	public:
@@ -148,5 +156,25 @@ inline U64 southWest(U64 b) { return (b & ~FILE_A) >> 9; }
 #define MAX_MATE 32000
 #define MATE(i) (MAX-i)
 #define MATE_DISTANCE(i) (i-MAX_MATE)
-int eval(chess::Position&);
+int eval(chess::Position& RESTRICT board);
 int piece_value(chess::PieceType piece);
+// Define enum class for evaluation keys
+enum class EvalKey {
+    DOUBLED, BACKWARD, BLOCKED, ISLANDED, ISOLATED, DBLISOLATED, WEAK, PAWNRACE,
+    SHIELD, STORM, OUTPOST, LEVER, PAWNRAM, OPENPAWN, HOLES,
+    UNDEV_KNIGHT, UNDEV_BISHOP, UNDEV_ROOK, DEV_QUEEN, OPEN_FILES,
+    SEMI_OPEN_FILES, FIANCHETTO, TRAPPED, KEY_CENTER, SPACE,
+    BADBISHOP, WEAKCOVER, MISSINGPAWN, ATTACK_ENEMY, K_OPENING,
+    K_MIDDLE, K_END, PINNED, SKEWERED, DISCOVERED, FORK,
+    TEMPO_FREEDOM_WEIGHT, TEMPO_OPPONENT_MOBILITY_PENALTY,
+    UNDERPROMOTE, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, COUNTER
+};
+// Struct to hold evaluation weights
+struct EvalWeights {
+    static const std::unordered_map<EvalKey, int> weights;
+
+    static int getWeight(EvalKey key) {
+        auto it = weights.find(key);
+        return (it != weights.end()) ? it->second : 0; // Default if key not found
+    }
+};
