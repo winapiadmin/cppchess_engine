@@ -1,7 +1,12 @@
-*.o
-chess_engine
-.venv
-!*.*pp
-Makefile
-README.md
+# Ignore everything
 *
+
+# But not these directories and files
+!*/
+!*.cpp
+!*.hpp
+!*.h
+!Makefile
+!README.md
+!LICENSE
+!.gitignore

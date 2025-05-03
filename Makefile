@@ -2,7 +2,7 @@
 CXX = g++
 
 # Source files and object files
-SRC = main.cpp eval.cpp search.cpp
+SRC = main.cpp eval.cpp search.cpp tt.cpp
 OBJ = $(SRC:.cpp=.o)
 
 # Output file

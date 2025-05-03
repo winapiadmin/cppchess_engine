@@ -1,49 +1,31 @@
+// File: main.cpp
 #include "chess.hpp"
-#include "search.h"
+#include "search.hpp"
+#include "tt.hpp"
 #include <iostream>
-extern unsigned long long nodes, evalhits, tthits;
-int searchRoot(chess::Position& board, int depth, int prevScore) {
-    if (depth < 3) {
-        return search(board, depth, -MAX, MAX, 0);
-    }
-
-    int window = 16;
-    int alpha = prevScore - window;
-    int beta = prevScore + window;
-    int score;
-
-    while (true) {
-        score = search(board, depth, alpha, beta, 0);
-        if (score <= alpha) {
-            alpha -= window;
-        } else if (score >= beta) {
-            beta += window;
-        } else {
-            break;
-        }
-        window *= 2;
-    }
-
-    return score;
-}
+#include <ctime>
 int main() {
-    chess::Position board("8/2P5/pk1B4/6b1/7p/8/PP3PB1/1K6 b - - 0 40");
+    chess::Position board("3r2k1/p4ppp/8/8/8/2R1P3/PQ3PPP/6K1 b - - 0 1");
     int prevScore = 0;
 
-    for (int i = 1; i <= 10; ++i) {
+    for (int depth = 1; depth <=6; ++depth) {
         clock_t t1 = clock();
 
-        int score = search(board, i, -MAX, MAX, 0);//searchRoot(board, i, prevScore);
+        search::tt.newSearch(); // Reset timestamps per iteration
+        int score = search::alphaBeta(board, -32767, 32767, depth, 0);
 
         clock_t t2 = clock();
         double seconds = double(t2 - t1) / CLOCKS_PER_SEC;
-        printf("\n%i %i %llu %llu %llu %.2f NPS\n", i, score, nodes, evalhits, tthits, nodes/seconds);
-        t1=clock();
-        printPV(board);
-        t2=clock();
-        printf("\nPV time: %.2f seconds\n", double(t2 - t1) / CLOCKS_PER_SEC);
+
+        printf("\nDepth: %d | Score: %d | Nodes: %llu | TT Hits: %llu | TT Misses: %llu | NPS: %.2f\n",
+               depth, score, search::nodes, tthits, ttmiss, search::nodes / seconds);
+
+        search::printPV(board);
+
         prevScore = score;
-        nodes = 0, evalhits=0, tthits=0;
+        search::nodes = 0;
+        search::tt.clear_stats();
+        
     }
 
     return 0;

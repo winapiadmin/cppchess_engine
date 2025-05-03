@@ -17,7 +17,7 @@ const std::unordered_map<EvalKey, int> EvalWeights::weights = {
     {EvalKey::TEMPO_FREEDOM_WEIGHT, 8}, {EvalKey::TEMPO_OPPONENT_MOBILITY_PENALTY, 6},
     {EvalKey::UNDERPROMOTE, 5}, {EvalKey::PAWN, 100}, {EvalKey::KNIGHT, 300},
     {EvalKey::BISHOP, 300}, {EvalKey::ROOK, 500}, {EvalKey::QUEEN, 900}, 
-    {EvalKey::COUNTER, 10}
+    {EvalKey::COUNTER, 1000}, {EvalKey::PV_MOVE, MATE(0)}
 };
 //std::unordered_map<U64, int> transposition;  // Faster lookup
 
