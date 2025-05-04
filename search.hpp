@@ -5,8 +5,6 @@
 #include "tt.hpp"
 #include "move_ordering.hpp"
 namespace search {
-
-    constexpr int MAX_DEPTH = 128;
     
     inline uint64_t nodes = 0;
 

@@ -143,7 +143,7 @@ class MoveStack {
 	  * @param move
 	  */
 	 constexpr void push(const_reference move) noexcept {
-		 assert(size_ < constants::MAX_MOVES);
+		 assert(size_ < 256);
 		 moves_[size_++] = move;
 	 }
  
@@ -152,7 +152,7 @@ class MoveStack {
 	  * @param move
 	  */
 	 constexpr void push(value_type&& move) noexcept {
-		 assert(size_ < constants::MAX_MOVES);
+		 assert(size_ < 256);
 		 moves_[size_++] = std::move(move);
 	 }
  
@@ -240,8 +240,8 @@ inline U64 southWest(U64 b) { return (b & ~FILE_A) >> 9; }
 #define getPawnAttacks(a, b) chess::attacks::pawn(a, b).getBits()
 #define MAX_PLY 245
 #define MAX 32767 // for black
-#define MAX_MATE 32000
-#define MATE(i) ((i < 0 ? -1 : 1) * (MAX_MATE - i))
+#define MAX_MATE 31999
+#define MATE(i) MAX_MATE-i
 #define MATE_DISTANCE(i) (i - MAX_MATE)
 int eval(chess::Position &RESTRICT board);
 int piece_value(chess::PieceType piece);

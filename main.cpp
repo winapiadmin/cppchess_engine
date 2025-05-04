@@ -1,11 +1,12 @@
 // File: main.cpp
 #include "chess.hpp"
+#include "eval.h"
 #include "search.hpp"
 #include "tt.hpp"
 #include <iostream>
 #include <ctime>
 int main() {
-    chess::Position board("3r2k1/p4ppp/8/8/8/2R1P3/PQ3PPP/6K1 b - - 0 1");
+    chess::Position board;
     int prevScore = 0;
 
     for (int depth = 1; depth <=6; ++depth) {
