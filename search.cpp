@@ -4,24 +4,10 @@ namespace search
 {
   // Transposition table
   TranspositionTable tt(20);
-  // Principal variation
-  chess::Move pv[256];
 
-void updatePV(int ply, chess::Move best_move) {
-  chess::Move newPV[256];
-  newPV[ply] = best_move;
-
-  int i = ply + 1;
-  for (; i < 256 && pv[i] != chess::Move(); ++i)
-    newPV[i] = pv[i];
-
-  newPV[i] = chess::Move(); // null-terminate
-
-  std::memcpy(pv + ply, newPV + ply, sizeof(chess::Move) * (i - ply + 1));
-}
-
-  int16_t alphaBeta(chess::Position &board, int16_t alpha, int16_t beta, int depth, int ply)
+  int16_t alphaBeta(chess::Position &board, int16_t alpha, int16_t beta, int depth, int ply, PV *pv)
   {
+    PV _pv={0};
     nodes++;
     auto ttEntry = tt.probe(board.hash());
     if (ttEntry)
@@ -37,12 +23,6 @@ void updatePV(int ply, chess::Move best_move) {
         if (alpha >= beta)
           return ttEntry->score();
       }
-    }
-    if (ply == 0)
-    {
-      memset(pv, 0, sizeof(pv));
-      nodes = 0;
-      tt.clear_stats();
     }
     if (depth == 0)
       return quiescence(board, alpha, beta, ply);
@@ -64,7 +44,7 @@ void updatePV(int ply, chess::Move best_move) {
     for (const auto &move : moves)
     {
       board.makeMove(move);
-      int16_t score = -alphaBeta(board, -beta, -alpha, depth - 1, ply + 1);
+      int16_t score = -alphaBeta(board, -beta, -alpha, depth - 1, ply + 1, &_pv);
       board.pop();
 
       if (score >= beta)
@@ -76,7 +56,11 @@ void updatePV(int ply, chess::Move best_move) {
       {
         alpha = score;
         bestmove = move;
-        updatePV(ply, bestmove);  // Move + child PV
+        pv->argmove[0] = move;
+
+        memcpy(pv->argmove + 1, _pv.argmove, _pv.cmove * sizeof(chess::Move));
+
+        pv->cmove = _pv.cmove + 1;
         foundPV = true;
       }
     }
@@ -111,12 +95,20 @@ void updatePV(int ply, chess::Move best_move) {
     }
     return alpha;
   }
-
+  PV pv;
+  int16_t alphaBeta(chess::Position &board, int16_t alpha, int16_t beta, int depth)
+  {
+    memset(&pv, 0, sizeof(pv));
+    pv.cmove = 0;
+    nodes = 0;
+    tt.clear_stats();
+    return alphaBeta(board, alpha, beta, depth, 0, &pv);
+  }
   void printPV(chess::Position &board)
   {
     std::cout << "Principal Variation: ";
-    for (int i = 0; i < 256 && pv[i] != chess::Move(); i++)
-      std::cout << pv[i] << " ";
+    for (int i = 0; i < pv.cmove && pv.argmove[i] != chess::Move(); i++)
+      std::cout << pv.argmove[i] << " ";
     std::cout << std::endl;
   }
 }
