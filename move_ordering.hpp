@@ -23,7 +23,7 @@ inline chess::Move counterMove[64][64];
 inline int16_t history[2][64][64] = {};
 inline chess::Move killerMoves[2][128] = {};
 
-inline void scoreMoves(chess::Position& board, chess::Movelist& moves, int ply) {
+inline void moveOrder(chess::Position& board, chess::Movelist& moves, int ply) {
     static thread_local std::vector<std::pair<chess::Move, int>> scoredMoves;
     scoredMoves.clear();
     scoredMoves.reserve(moves.size());

@@ -5,15 +5,17 @@
 #include "tt.hpp"
 #include <iostream>
 #include <ctime>
-int main() {
+int main()
+{
     chess::Position board;
     int prevScore = 0;
 
-    for (int depth = 1; depth <=6; ++depth) {
+    for (int depth = 1; depth <= 6; ++depth)
+    {
         clock_t t1 = clock();
 
         search::tt.newSearch(); // Reset timestamps per iteration
-        int score = search::alphaBeta(board, -32767, 32767, depth, 0);
+        int score = search::alphaBeta(board, -MATE(0), MATE(0), depth, 0);
 
         clock_t t2 = clock();
         double seconds = double(t2 - t1) / CLOCKS_PER_SEC;
@@ -26,7 +28,6 @@ int main() {
         prevScore = score;
         search::nodes = 0;
         search::tt.clear_stats();
-        
     }
 
     return 0;

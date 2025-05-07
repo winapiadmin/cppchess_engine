@@ -18,7 +18,7 @@ void TranspositionTable::clear() {
 void TranspositionTable::newSearch() {
     currentTime++;
 }
-void TranspositionTable::store(uint64_t hash, const chess::Move& bestMove, int16_t score, uint8_t depth, uint8_t flag) {
+void TranspositionTable::store(uint64_t hash, const chess::Move& bestMove, int16_t score, uint8_t depth, TTFlag flag) {
     size_t index = (hash & sizeMask) * 2; // Two entries per bucket
     TTEntry& e0 = table[index];
     TTEntry& e1 = table[index + 1];
