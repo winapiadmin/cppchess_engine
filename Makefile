@@ -17,7 +17,7 @@ $(EXEC): $(OBJ)
 
 # Rule to build object files from source files
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -DNDEBUG -std=c++17 -c $< -o $@
+	$(CXX) $(CXXFLAGS) -std=c++17 -c $< -o $@
 
 # Clean up the compiled files
 clean:

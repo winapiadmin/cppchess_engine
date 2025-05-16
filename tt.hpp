@@ -19,16 +19,16 @@ struct TTEntry {
 
     uint8_t  depth()     const { return packed >> 56; }
     TTFlag   flag()      const { return static_cast<TTFlag>((packed >> 54) & 0x3); }
-    int16_t  score()     const { return (int16_t)((packed >> 38) & 0xFFFF); }
+    int16_t  score()     const { return bestMove.score(); }
     uint64_t timestamp() const { return (packed >> 1) & 0x1FFFFFFFFFULL; }
     bool     valid()     const { return packed & 1; }
 
     void set(uint8_t d, TTFlag f, int16_t s, uint64_t ts, bool v) {
         packed = (uint64_t(d) << 56) |
                  (uint64_t(f) << 54) |
-                 (uint64_t(uint16_t(s)) << 38) |
                  ((ts & 0x1FFFFFFFFFULL) << 1) |
                  (v ? 1ULL : 0);
+        bestMove.setScore(s);
     }
 };
 

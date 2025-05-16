@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <cstring>
+#include "tt.hpp"
 #if __cplusplus >= 202002L
 #define POPCOUNT64(bits) std::popcount(bits);
 #elif defined(USE_POPCNT)
@@ -173,7 +174,14 @@ namespace chess
 	public:
 		Position() : Board(), move_stack() {}
 		Position(std::string_view fen) : Board(fen), move_stack() {}
-
+		bool setFen(std::string_view fen){
+			move_stack.clear();
+			return Board::setFen(fen);
+		}
+		bool setEpd(std::string_view fen){
+			move_stack.clear();
+			return Board::setEpd(fen);
+		}
 		Position(const Position &other)
 		{
 			Board::operator=(other);
@@ -292,8 +300,7 @@ enum class EvalKey
 	BISHOP,
 	ROOK,
 	QUEEN,
-	COUNTER,
-	PV_MOVE
+	COUNTER
 };
 // Struct to hold evaluation weights
 struct EvalWeights

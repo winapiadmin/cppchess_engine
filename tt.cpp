@@ -1,5 +1,5 @@
 #include "tt.hpp"
-const int8_t depthMargin=2;
+const int8_t depthMargin=0;
 TranspositionTable::TranspositionTable(size_t sizePow2)
     : sizeMask{(1ULL << sizePow2) - 1},
       entryCount(1ULL << sizePow2),

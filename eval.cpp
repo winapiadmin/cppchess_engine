@@ -1,6 +1,22 @@
 #include "eval.h"
 
 // Initialize static weight map
+/**
+ * @brief Static map of evaluation weights used for chess position scoring
+ * 
+ * This map contains predefined integer weights for various chess evaluation criteria,
+ * including pawn structure, piece development, board control, and tactical considerations.
+ * 
+ * The weights are used to calculate a comprehensive evaluation score for a chess position,
+ * covering aspects such as:
+ * - Pawn structure (doubled, backward, isolated pawns)
+ * - Piece development and positioning
+ * - King safety
+ * - Tactical opportunities (pins, forks, discovered attacks)
+ * - Piece values
+ * 
+ * Weights are defined as static const to ensure consistent evaluation across the chess engine.
+ */
 const std::unordered_map<EvalKey, int> EvalWeights::weights = {
     {EvalKey::DOUBLED, 10}, {EvalKey::BACKWARD, 8}, {EvalKey::BLOCKED, 5},
     {EvalKey::ISLANDED, 6}, {EvalKey::ISOLATED, 12}, {EvalKey::DBLISOLATED, 20},
@@ -17,9 +33,8 @@ const std::unordered_map<EvalKey, int> EvalWeights::weights = {
     {EvalKey::TEMPO_FREEDOM_WEIGHT, 8}, {EvalKey::TEMPO_OPPONENT_MOBILITY_PENALTY, 6},
     {EvalKey::UNDERPROMOTE, 5}, {EvalKey::PAWN, 100}, {EvalKey::KNIGHT, 300},
     {EvalKey::BISHOP, 300}, {EvalKey::ROOK, 500}, {EvalKey::QUEEN, 900}, 
-    {EvalKey::COUNTER, 1000}, {EvalKey::PV_MOVE, MATE(0)}
+    {EvalKey::COUNTER, 1000}
 };
-//std::unordered_map<U64, int> transposition;  // Faster lookup
 
 // Declare only missing functions
 int evaluatePawnStructure(const chess::Position&);
@@ -110,7 +125,6 @@ std::vector<Square> scan_reversed(chess::Bitboard bb)
     }
     return iter;
 }
-#ifdef DBG
 // **1. Evaluate Bad Bishops**
 int evaluateBadBishops(const chess::Position& board) {
     auto myBishops = board.pieces(chess::PieceType::underlying::BISHOP, board.sideToMove());
@@ -126,7 +140,6 @@ int evaluateBadBishops(const chess::Position& board) {
     }
     return score;
 }
-#endif
 int evaluateKingSafety(const chess::Position& board) {
     // 1) One-time fetches
     const int side = board.sideToMove();
@@ -175,8 +188,6 @@ int evaluateKingSafety(const chess::Position& board) {
     int p = phase(board);  // 1=open, 2=mid, 3=end
     return score * phaseWeight[p];
 }
-#ifdef DBG
-
 // **4. Evaluate Rooks on Open/Semi-Open Files**
 int evaluateRooksOnFiles(const chess::Position& board) {
     auto myRooks = board.pieces(chess::PieceType::underlying::ROOK, board.sideToMove());
@@ -926,7 +937,6 @@ int underpromote(chess::Position &board) {
 
     return (lastMove.promotionType().internal() != chess::PieceType::QUEEN) ? reward : 0;
 }
-#endif
 
 // PAWN
 const int PAWN_PSQT[2][64] = {
@@ -1110,16 +1120,14 @@ int psqt_eval(const chess::Position& board) {
     }
     return score; // Negate for Black
 }
+TranspositionTable evaltt(5);
 unsigned long long evalhits=0;
 int eval(chess::Position &board) {
-    /*U64 hash = board.hash();
-    // Faster lookup & insertion
-    auto [it, inserted] = transposition.emplace(hash, 0);
-    if (!inserted){
-        ++evalhits;
-        return it->second;  // Already exists, return stored evaluation
-    }*/
-
+    U64 hash = board.hash();
+    if (TTEntry* entry=evaltt.probe(hash)){
+        evalhits++;
+        return entry->score();
+    }
     // Precompute piece counts (avoid multiple function calls)
     int pieceCount[10] = {
         board.pieces(chess::PieceType::PAWN, chess::Color::WHITE).count(),
@@ -1143,7 +1151,6 @@ int eval(chess::Position &board) {
     
     // Evaluate positional aspects
     eval += evaluateKingSafety(board);
-    #ifdef DBG
     eval += evaluatePawnStructure(board);
     eval += evaluatePieces(board);
     eval += evaluateTactics(board);
@@ -1153,12 +1160,10 @@ int eval(chess::Position &board) {
     eval += center_control(board);
     eval += key_center_squares_control(board);
     eval += evaluatePieceActivity(board);
-    #endif
     eval += psqt_eval(board);
     board.makeNullMove();
     // Evaluate positional aspects
     eval -= evaluateKingSafety(board);
-    #ifdef DBG
     eval -= evaluatePawnStructure(board);
     eval -= evaluatePieces(board);
     eval -= evaluateTactics(board);
@@ -1168,14 +1173,11 @@ int eval(chess::Position &board) {
     eval -= center_control(board);
     eval -= key_center_squares_control(board);
     eval -= evaluatePieceActivity(board);
-    #endif
     eval -= psqt_eval(board);
     board.unmakeNullMove();
-    
-    //it->second = eval;  // Store result
+    evaltt.store(hash, chess::Move(), eval, 0, TTFlag::EXACT);
     return eval;
 }
-#ifdef DBG
 // Use `const chess::Position&` to avoid copies
 int evaluatePawnStructure(const chess::Position& board) {
     chess::Position b=board;
@@ -1189,18 +1191,4 @@ int evaluatePawnStructure(const chess::Position& board) {
 int evaluatePieces(const chess::Position& board) {
     return -(evaluateBadBishops(board) + evaluateTrappedPieces(board) + evaluateKnightForks(board)) +
            (evaluateFianchetto(board) + evaluateRooksOnFiles(board));
-}
-#endif
-int piece_value(chess::PieceType piece) {
-    static const int lookup[] = {
-        0, // NONE
-        EvalWeights::getWeight(EvalKey::PAWN),
-        EvalWeights::getWeight(EvalKey::KNIGHT),
-        EvalWeights::getWeight(EvalKey::BISHOP),
-        EvalWeights::getWeight(EvalKey::ROOK),
-        EvalWeights::getWeight(EvalKey::QUEEN),
-        0  // KING or others → 0
-    };
-    int idx = static_cast<int>(piece);
-    return (idx >= 0 && idx < 7) ? lookup[idx] : 0;
 }
