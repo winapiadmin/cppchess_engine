@@ -15,8 +15,7 @@ constexpr int SCORE_COUNTER = 7000;
 constexpr int SCORE_HISTORY = 1;
 
 inline int mvvLva(chess::PieceType victim, chess::PieceType attacker) {
-    static const int pieceValue[] = {0, 100, 300, 325, 500, 900, 0}; // EMPTY, P, N, B, R, Q, K
-    return pieceValue[(int)victim] * 10 - pieceValue[(int)attacker];
+    return piece_value(victim) * 10 - piece_value(attacker);
 }
 
 inline chess::Move counterMove[64][64];

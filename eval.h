@@ -4,7 +4,6 @@
 #include <vector>
 #include <cstdint>
 #include <cstring>
-#include "tt.hpp"
 #if __cplusplus >= 202002L
 #define POPCOUNT64(bits) std::popcount(bits);
 #elif defined(USE_POPCNT)
@@ -214,102 +213,10 @@ namespace chess
 		MoveStack move_stack;
 	};
 };
-
-using U64 = uint64_t;
-
-// Constants for board files
-constexpr U64 FILE_A = 0x0101010101010101ULL, RANK_1 = 0xff;
-constexpr U64 FILE_B = FILE_A << 1, RANK_2 = RANK_1 << 8;
-constexpr U64 FILE_C = FILE_A << 2, RANK_3 = RANK_2 << 8;
-constexpr U64 FILE_D = FILE_A << 3, RANK_4 = RANK_3 << 8;
-constexpr U64 FILE_E = FILE_A << 4, RANK_5 = RANK_4 << 8;
-constexpr U64 FILE_F = FILE_A << 5, RANK_6 = RANK_5 << 8;
-constexpr U64 FILE_G = FILE_A << 6, RANK_7 = RANK_6 << 8;
-constexpr U64 FILE_H = FILE_A << 7, RANK_8 = RANK_7 << 8;
-
-constexpr U64 FILES[8] = {FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H};
-typedef unsigned long long Bitboard;
-typedef char Square;
-
-// Shift functions for pawn movement
-inline U64 north(U64 b) { return b << 8; }
-inline U64 south(U64 b) { return b >> 8; }
-inline U64 east(U64 b) { return (b & ~FILE_H) << 1; }
-inline U64 west(U64 b) { return (b & ~FILE_A) >> 1; }
-inline U64 northEast(U64 b) { return (b & ~FILE_H) << 9; }
-inline U64 northWest(U64 b) { return (b & ~FILE_A) << 7; }
-inline U64 southEast(U64 b) { return (b & ~FILE_H) >> 7; }
-inline U64 southWest(U64 b) { return (b & ~FILE_A) >> 9; }
-#define getQueenAttacks(a, b) chess::attacks::queen(a, b).getBits()
-#define getKnightAttacks(a, ...) chess::attacks::knight(a).getBits()
-#define getKingAttacks(a, friendlyPieces) (chess::attacks::king(a).getBits() & ~(friendlyPieces))
-#define getRookAttacks(a, b) chess::attacks::rook(a, b).getBits()
-#define getBishopAttacks(a, b) chess::attacks::bishop(a, b).getBits()
-#define getPawnAttacks(a, b) chess::attacks::pawn(a, b).getBits()
 #define MAX_PLY 245
-#define MAX 32767 // for black
 #define MAX_MATE 31999
+#define MAX_SCORE_CP 31000
 #define MATE(i) MAX_MATE-i
 #define MATE_DISTANCE(i) (i - MAX_MATE)
-int eval(chess::Position &RESTRICT board);
-int piece_value(chess::PieceType piece);
-// Define enum class for evaluation keys
-enum class EvalKey
-{
-	DOUBLED,
-	BACKWARD,
-	BLOCKED,
-	ISLANDED,
-	ISOLATED,
-	DBLISOLATED,
-	WEAK,
-	PAWNRACE,
-	SHIELD,
-	STORM,
-	OUTPOST,
-	LEVER,
-	PAWNRAM,
-	OPENPAWN,
-	HOLES,
-	UNDEV_KNIGHT,
-	UNDEV_BISHOP,
-	UNDEV_ROOK,
-	DEV_QUEEN,
-	OPEN_FILES,
-	SEMI_OPEN_FILES,
-	FIANCHETTO,
-	TRAPPED,
-	KEY_CENTER,
-	SPACE,
-	BADBISHOP,
-	WEAKCOVER,
-	MISSINGPAWN,
-	ATTACK_ENEMY,
-	K_OPENING,
-	K_MIDDLE,
-	K_END,
-	PINNED,
-	SKEWERED,
-	DISCOVERED,
-	FORK,
-	TEMPO_FREEDOM_WEIGHT,
-	TEMPO_OPPONENT_MOBILITY_PENALTY,
-	UNDERPROMOTE,
-	PAWN,
-	KNIGHT,
-	BISHOP,
-	ROOK,
-	QUEEN,
-	COUNTER
-};
-// Struct to hold evaluation weights
-struct EvalWeights
-{
-	static const std::unordered_map<EvalKey, int> weights;
-
-	static int getWeight(EvalKey key)
-	{
-		auto it = weights.find(key);
-		return (it != weights.end()) ? it->second : 0; // Default if key not found
-	}
-};
+int eval(chess::Position &board);
+constexpr int16_t ASPIRATION_DELTA = 30;

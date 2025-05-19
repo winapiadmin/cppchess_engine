@@ -1,1194 +1,730 @@
 #include "eval.h"
+// Utilities
 
-// Initialize static weight map
-/**
- * @brief Static map of evaluation weights used for chess position scoring
- * 
- * This map contains predefined integer weights for various chess evaluation criteria,
- * including pawn structure, piece development, board control, and tactical considerations.
- * 
- * The weights are used to calculate a comprehensive evaluation score for a chess position,
- * covering aspects such as:
- * - Pawn structure (doubled, backward, isolated pawns)
- * - Piece development and positioning
- * - King safety
- * - Tactical opportunities (pins, forks, discovered attacks)
- * - Piece values
- * 
- * Weights are defined as static const to ensure consistent evaluation across the chess engine.
- */
-const std::unordered_map<EvalKey, int> EvalWeights::weights = {
-    {EvalKey::DOUBLED, 10}, {EvalKey::BACKWARD, 8}, {EvalKey::BLOCKED, 5},
-    {EvalKey::ISLANDED, 6}, {EvalKey::ISOLATED, 12}, {EvalKey::DBLISOLATED, 20},
-    {EvalKey::WEAK, 15}, {EvalKey::PAWNRACE, 5}, {EvalKey::SHIELD, 10},
-    {EvalKey::STORM, 10}, {EvalKey::OUTPOST, 15}, {EvalKey::LEVER, 8},
-    {EvalKey::PAWNRAM, 5}, {EvalKey::OPENPAWN, 7}, {EvalKey::HOLES, 10},
-    {EvalKey::UNDEV_KNIGHT, 15}, {EvalKey::UNDEV_BISHOP, 10}, {EvalKey::UNDEV_ROOK, 10},
-    {EvalKey::DEV_QUEEN, 5}, {EvalKey::OPEN_FILES, 15}, {EvalKey::SEMI_OPEN_FILES, 8},
-    {EvalKey::FIANCHETTO, 10}, {EvalKey::TRAPPED, 20}, {EvalKey::KEY_CENTER, 10},
-    {EvalKey::SPACE, 12}, {EvalKey::BADBISHOP, 15}, {EvalKey::WEAKCOVER, 18},
-    {EvalKey::MISSINGPAWN, 10}, {EvalKey::ATTACK_ENEMY, 20}, {EvalKey::K_OPENING, 25},
-    {EvalKey::K_MIDDLE, 20}, {EvalKey::K_END, 10}, {EvalKey::PINNED, 15},
-    {EvalKey::SKEWERED, 12}, {EvalKey::DISCOVERED, 14}, {EvalKey::FORK, 16},
-    {EvalKey::TEMPO_FREEDOM_WEIGHT, 8}, {EvalKey::TEMPO_OPPONENT_MOBILITY_PENALTY, 6},
-    {EvalKey::UNDERPROMOTE, 5}, {EvalKey::PAWN, 100}, {EvalKey::KNIGHT, 300},
-    {EvalKey::BISHOP, 300}, {EvalKey::ROOK, 500}, {EvalKey::QUEEN, 900}, 
-    {EvalKey::COUNTER, 1000}
-};
-
-// Declare only missing functions
-int evaluatePawnStructure(const chess::Position&);
-int evaluatePieces(const chess::Position&);
-
-// Piece weights for determining game phase
-constexpr int PAWN_PHASE    = 0;
-constexpr int KNIGHT_PHASE  = 1;
-constexpr int BISHOP_PHASE  = 1;
-constexpr int ROOK_PHASE    = 2;
-constexpr int QUEEN_PHASE   = 4;
-
-// Initial game phase score (sum of all piece values)
-constexpr int TOTAL_PHASE = (KNIGHT_PHASE * 4) + (BISHOP_PHASE * 4) +
-                            (ROOK_PHASE * 4) + (QUEEN_PHASE * 2);
-
-int phase(const chess::Position& board) {
-    int whiteKnights = POPCOUNT64(board.pieces(chess::PieceType::underlying::KNIGHT, chess::Color::underlying::WHITE).getBits());
-    int whiteBishops = POPCOUNT64(board.pieces(chess::PieceType::underlying::BISHOP, chess::Color::underlying::WHITE).getBits());
-    int whiteRooks = POPCOUNT64(board.pieces(chess::PieceType::underlying::ROOK, chess::Color::underlying::WHITE).getBits());
-    int whiteQueens = POPCOUNT64(board.pieces(chess::PieceType::underlying::QUEEN, chess::Color::underlying::WHITE).getBits());
-
-    int blackKnights = POPCOUNT64(board.pieces(chess::PieceType::underlying::KNIGHT, chess::Color::underlying::BLACK).getBits());
-    int blackBishops = POPCOUNT64(board.pieces(chess::PieceType::underlying::BISHOP, chess::Color::underlying::BLACK).getBits());
-    int blackRooks = POPCOUNT64(board.pieces(chess::PieceType::underlying::ROOK, chess::Color::underlying::BLACK).getBits());
-    int blackQueens = POPCOUNT64(board.pieces(chess::PieceType::underlying::QUEEN, chess::Color::underlying::BLACK).getBits());
-
-    int currentPhase = TOTAL_PHASE - (
-        (whiteKnights + blackKnights) * KNIGHT_PHASE +
-        (whiteBishops + blackBishops) * BISHOP_PHASE +
-        (whiteRooks + blackRooks) * ROOK_PHASE +
-        (whiteQueens + blackQueens) * QUEEN_PHASE
-    );
-
-    double phaseRatio = (double)currentPhase / TOTAL_PHASE;
-
-    if (phaseRatio >= 0.7) {
-        return 1; // Opening
-    } else if (phaseRatio >= 0.3) {
-        return 2; // Middlegame
-    } else {
-        return 3; // Endgame
-    }
-}
-
-constexpr U64 DARK_SQUARES = 0xAA55AA55AA55AA55ULL; // Dark square mask
-constexpr U64 LIGHT_SQUARES = ~DARK_SQUARES; // Light square mask
-
-#define getKingMobility getKingAttacks
-
-// King Safety Zones
-constexpr U64 KING_SIDE = FILE_G | FILE_H;
-constexpr U64 QUEEN_SIDE = FILE_A | FILE_B;
-constexpr U64 CENTER = (FILE_D | FILE_E) & (RANK_4 | RANK_5);
-
-int msb(Bitboard bb)
+// Function to flip a FEN string
+std::string flipFEN(const std::string &fen)
 {
-#if __cplusplus >= 202002L
-        return std::countl_zero(bits) ^ 63;
-#else
-#    if defined(__GNUC__)
-        return bb ? 63 - __builtin_clzll(bb) : -1;
-#    elif defined(_MSC_VER)
-        unsigned long idx;
-        _BitScanReverse64(&idx, bits);
-        return static_cast<int>(idx);
-#    else
-    // Fallback for compilers without __builtin_clzll and C++20
-    if (bb == 0) return -1;
-    int index = 0;
-    while (bb >>= 1)
+    // Split the FEN string into its components
+    size_t first_space = fen.find(' ');
+    std::string piece_placement = fen.substr(0, first_space);
+    std::string remaining = fen.substr(first_space + 1);
+
+    // Reverse the piece placement
+    std::string flipped;
+    for (auto it = piece_placement.rbegin(); it != piece_placement.rend(); ++it)
     {
-        index++;
+        if (std::isdigit(*it))
+        {
+            flipped += *it;
+        }
+        else if (*it == '/')
+        {
+            flipped += '/';
+        }
+        else
+        {
+            flipped += std::islower(*it) ? std::toupper(*it) : std::tolower(*it);
+        }
     }
-    return index;
-#    endif
-#endif
+    std::reverse(flipped.begin(), flipped.end());
+
+    // Toggle the side to move
+    size_t second_space = remaining.find(' ');
+    char side_to_move = remaining[0] == 'w' ? 'b' : 'w';
+    std::string rest = remaining.substr(second_space);
+
+    // Adjust castling rights
+    size_t third_space = rest.find(' ');
+    std::string castling = rest.substr(1, third_space - 1);
+    for (char &c : castling)
+    {
+        if (c == 'K')
+            c = 'k';
+        else if (c == 'Q')
+            c = 'q';
+        else if (c == 'k')
+            c = 'K';
+        else if (c == 'q')
+            c = 'Q';
+    }
+    if (castling.empty())
+        castling = "-";
+
+    // Adjust en passant square
+    size_t fourth_space = rest.find(' ', third_space + 1);
+    std::string en_passant = rest.substr(third_space + 1, fourth_space - third_space - 1);
+    if (en_passant != "-")
+    {
+        en_passant[1] = en_passant[1] == '3' ? '6' : en_passant[1] == '6' ? '3'
+                                                                          : en_passant[1];
+    }
+
+    // Combine all parts to form the flipped FEN
+    return flipped + " " + side_to_move + " " + castling + " " + en_passant + rest.substr(fourth_space);
+}
+chess::Position colorflip(const chess::Position &Position)
+{
+    return chess::Position(flipFEN(Position.getFen()));
+}
+typedef int (*func_1)(const chess::Position &, const chess::Square &);
+typedef int (*func_2)(const chess::Position &, const chess::Square &, int);
+int sum(const chess::Position &pos, func_1 func)
+{
+    int total = 0;
+    for (int x = 0; x < 64; ++x)
+            total += func(pos, x);
+    return total;
+}
+int sum(const chess::Position &pos, func_2 func, int param)
+{
+    int total = 0;
+    for (int x = 0; x < 64; ++x)
+            total += func(pos, x, param);
+    return total;
 }
 
-std::vector<Square> scan_reversed(chess::Bitboard bb)
+// Main evaluation
+int piece_value_bonus(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ, int mg = 0)
 {
-    std::vector<Square> iter;
-    iter.reserve(64);
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, piece_value_bonus, 0);
+    static constexpr std::array<int, 5> mg_values = {124, 781, 825, 1276, 2538};
+    static constexpr std::array<int, 5> eg_values = {206, 854, 915, 1380, 2682};
+    chess::PieceType i = pos.at(square).type();
+    return (i != chess::PieceType::NONE) ? (mg ? mg_values[i] : eg_values[i]) : 0;
+}
+inline int piece_value_mg(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, piece_value_mg);
+    return piece_value_bonus(pos, square, true);
+}
+
+int psqt_bonus(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ, int mg = 0)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, psqt_bonus, mg);
+
+    static const std::vector<std::vector<std::vector<int>>> bonus[2] = {
+        {// Endgame (mg == 0)
+         {{-96, -65, -49, -21}, {-67, -54, -18, 8}, {-40, -27, -8, 29}, {-35, -2, 13, 28}, {-45, -16, 9, 39}, {-51, -44, -16, 17}, {-69, -50, -51, 12}, {-100, -88, -56, -17}},
+         {{-57, -30, -37, -12}, {-37, -13, -17, 1}, {-16, -1, -2, 10}, {-20, -6, 0, 17}, {-17, -1, -14, 15}, {-30, 6, 4, 6}, {-31, -20, -1, 1}, {-46, -42, -37, -24}},
+         {{-9, -13, -10, -9}, {-12, -9, -1, -2}, {6, -8, -2, -6}, {-6, 1, -9, 7}, {-5, 8, 7, -6}, {6, 1, -7, 10}, {4, 5, 20, -5}, {18, 0, 19, 13}},
+         {{-69, -57, -47, -26}, {-55, -31, -22, -4}, {-39, -18, -9, 3}, {-23, -3, 13, 24}, {-29, -6, 9, 21}, {-38, -18, -12, 1}, {-50, -27, -24, -8}, {-75, -52, -43, -36}},
+         {{1, 45, 85, 76}, {53, 100, 133, 135}, {88, 130, 169, 175}, {103, 156, 172, 172}, {96, 166, 199, 199}, {92, 172, 184, 191}, {47, 121, 116, 131}, {11, 59, 73, 78}}},
+        {// Middlegame (mg == 1)
+         {{-175, -92, -74, -73}, {-77, -41, -27, -15}, {-61, -17, 6, 12}, {-35, 8, 40, 49}, {-34, 13, 44, 51}, {-9, 22, 58, 53}, {-67, -27, 4, 37}, {-201, -83, -56, -26}},
+         {{-53, -5, -8, -23}, {-15, 8, 19, 4}, {-7, 21, -5, 17}, {-5, 11, 25, 39}, {-12, 29, 22, 31}, {-16, 6, 1, 11}, {-17, -14, 5, 0}, {-48, 1, -14, -23}},
+         {{-31, -20, -14, -5}, {-21, -13, -8, 6}, {-25, -11, -1, 3}, {-13, -5, -4, -6}, {-27, -15, -4, 3}, {-22, -2, 6, 12}, {-2, 12, 16, 18}, {-17, -19, -1, 9}},
+         {{3, -5, -5, 4}, {-3, 5, 8, 12}, {-3, 6, 13, 7}, {4, 5, 9, 8}, {0, 14, 12, 5}, {-4, 10, 6, 8}, {-5, 6, 10, 8}, {-2, -2, 1, -2}},
+         {{271, 327, 271, 198}, {278, 303, 234, 179}, {195, 258, 169, 120}, {164, 190, 138, 98}, {154, 179, 105, 70}, {123, 145, 81, 31}, {88, 120, 65, 33}, {59, 89, 45, -1}}}};
+
+    static const std::vector<std::vector<int>> pbonus[2] = {
+        {// Endgame (mg == 0)
+         {0, 0, 0, 0, 0, 0, 0, 0},
+         {-10, -6, 10, 0, 14, 7, -5, -19},
+         {-10, -10, -10, 4, 4, 3, -6, -4},
+         {6, -2, -8, -4, -13, -12, -10, -9},
+         {10, 5, 4, -5, -5, -5, 14, 9},
+         {28, 20, 21, 28, 30, 7, 6, 13},
+         {0, -11, 12, 21, 25, 19, 4, 7},
+         {0, 0, 0, 0, 0, 0, 0, 0}},
+        {// Middlegame (mg == 1)
+         {0, 0, 0, 0, 0, 0, 0, 0},
+         {3, 3, 10, 19, 16, 19, 7, -5},
+         {-9, -15, 11, 15, 32, 22, 5, -22},
+         {-4, -23, 6, 20, 40, 17, 4, -8},
+         {13, 0, -13, 1, 11, -2, -13, 5},
+         {5, -12, -7, 22, -8, -5, -15, -8},
+         {-7, 7, -3, -13, 5, -16, 10, -8},
+         {0, 0, 0, 0, 0, 0, 0, 0}}};
+
+    chess::PieceType p = pos.at(square).type();
+    if (p == chess::PieceType::NONE)
+        return 0;
+    int index = p;
+    return (index == 0) ? pbonus[mg][7 - square.rank()][square.file()] : bonus[mg][index - 1][7 - square.rank()][std::min(square.file(), chess::File(7 - square.file()))];
+}
+inline int psqt_mg(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, psqt_mg);
+    return psqt_bonus(pos, square, true);
+}
+int imbalance(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, imbalance);
+
+    static const std::vector<std::vector<int>> qo = {
+        {0}, {40, 38}, {32, 255, -62}, {0, 104, 4, 0}, {-26, -2, 47, 105, -208}, {-189, 24, 117, 133, -134, -6}};
+    static const std::vector<std::vector<int>> qt = {
+        {0}, {36, 0}, {9, 63, 0}, {59, 65, 42, 0}, {46, 39, 24, -24, 0}, {97, 100, -42, 137, 268, 0}};
+
+    const std::string piece_map = ".PNBRQ.pnbrq";
+    int j = piece_map.find(pos.at(square));
+
+    if (j < 0 || j > 5)
+        return 0; // Ignore out-of-bounds and kings
+
+    int bishop[2] = {0, 0}, v = 0;
+
+    for (chess::Square s; s.index() < 64; ++s)
+    {
+        int i = piece_map.find(pos.at(s));
+
+        if (i == std::string::npos)
+            continue; // Ignore empty squares
+
+        if (i == 9)
+            bishop[0]++;
+        if (i == 3)
+            bishop[1]++;
+        if (i % 6 > j)
+            continue;
+
+        v += (i > 5) ? qt[j][i - 6] : qo[j][i];
+    }
+
+    if (bishop[0] > 1)
+        v += qt[j][0];
+    if (bishop[1] > 1)
+        v += qo[j][0];
+
+    return v;
+}
+inline int bishop_pair(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (pos.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() < 2)
+        return 0;
+    if (square == chess::Square::underlying::NO_SQ)
+        return 1438;
+    return pos.at(square) == chess::Piece::WHITEBISHOP;
+}
+inline int imbalance_total(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    int v = 0;
+    v += imbalance(pos) - imbalance(colorflip(pos));
+    v += bishop_pair(pos) - bishop_pair(colorflip(pos));
+    return v >> 4;
+}
+int isolated(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, isolated);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+    int file = square.file();
+    chess::Bitboard left(chess::File(file+1)),
+	    	    right(chess::File(file-1)),
+		    pawns=pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE),
+		    adj=left|right;
+    if (pawns&adj)return 0;
+    return 1;
+}
+int doubled_isolated(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, doubled_isolated);
+
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+
+    if (isolated(pos, square))
+    {
+        int obe = 0, eop = 0, ene = 0;
+        int file = square.file();
+        int rank = square.rank();
+
+        for (int y = 0; y < 8; y++)
+        {
+            if (y > rank && pos.at(chess::Square(chess::File(file), y)) == chess::Piece::WHITEPAWN)
+                obe++;
+            if (y < rank && pos.at(chess::Square(chess::File(file), y)) == chess::Piece::BLACKPAWN)
+                eop++;
+            if ((file > 0 && pos.at(chess::Square(chess::File(file - 1), y)) == chess::Piece::BLACKPAWN) ||
+                (file < 7 && pos.at(chess::Square(chess::File(file + 1), y)) == chess::Piece::BLACKPAWN))
+                ene++;
+        }
+
+        if (obe > 0 && ene == 0 && eop > 0)
+            return 1;
+    }
+
+    return 0;
+}
+int backward(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, backward);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+    int file = square.file();
+    int rank = square.rank();
+
+    for (int y = rank; y < 8; y++)
+    {
+        if ((file && pos.at(chess::Square(chess::File(file - 1), y)) == chess::Piece::WHITEPAWN) ||
+            ((file & 0xfffffff8) && pos.at(chess::Square(chess::File(file + 1), y)) == chess::Piece::WHITEPAWN))
+            return 0;
+    }
+
+    return (file && (rank & 0xfffffffe) && pos.at(square - 17) == chess::Piece::BLACKPAWN) ||
+           ((file & 0xfffffff8) && (rank & 0xfffffffe) && pos.at(square - 15) == chess::Piece::BLACKPAWN) ||
+           (rank && pos.at(square - 8) == chess::Piece::BLACKPAWN);
+}
+inline int supported(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, supported);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+    return (pos.at(square + 7) == chess::Piece::WHITEPAWN) + (pos.at(square + 9) == chess::Piece::WHITEPAWN);
+}
+inline int phalanx(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, phalanx);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+    if (pos.at(square - 1) == chess::Piece::WHITEPAWN || pos.at(square + 1) == chess::Piece::WHITEPAWN)
+        return 1;
+    return 0;
+}
+inline int connected(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, connected);
+    return supported(pos,square)||phalanx(pos, square);
+}
+int opposed(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, opposed);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+
+    chess::Bitboard bb(square.rank()),
+	    	    bp=pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
+    return (bb&bp)!=0;
+}
+
+inline int weak_unopposed_pawn(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, weak_unopposed_pawn);
+    return (!opposed(pos, square)) && (isolated(pos, square) || backward(pos, square));
+}
+int connected_bonus(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, connected_bonus);
+    if (!connected(pos, square))
+        return 0;
+    std::vector<int> seed = {0, 7, 8, 12, 29, 48, 86};
+    int op = opposed(pos, square), ph = phalanx(pos, square), su = supported(pos, square), bl = pos.at(square - 1) == chess::Piece::WHITEPAWN, r = square.rank();
+    if (r < 2 || r > 7)
+        return 0;
+    return seed[r - 1] * (2 + ph - op) + 21 * su;
+}
+int doubled(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, doubled);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+
+    if (pos.at(square + 8) != chess::Piece::WHITEPAWN ||
+        pos.at(square + 15) == chess::Piece::WHITEPAWN ||
+        pos.at(square + 17) == chess::Piece::WHITEPAWN)
+        return 0;
+    return 1;
+}
+int blocked(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, blocked);
+    if (pos.at(square) != chess::Piece::WHITEPAWN)
+        return 0;
+
+    int rank = square.rank();
+    if (rank != 2 && rank != 3)
+        return 0;
+
+    if (pos.at(square - 8) != chess::Piece::BLACKPAWN)
+        return 0;
+
+    return 4 - rank;
+}
+int pawn_attacks_span(const chess::Position &pos, const chess::Square &square)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, pawn_attacks_span);
+
+    chess::Position pos2 = colorflip(pos); // Assuming `colorflip` creates a Position with flipped colors
+    for (int y = 0; y < square.rank(); y++)
+    {
+	chess::Rank br=chess::Rank::back_rank(y, chess::Color::WHITE);
+	chess::Square w=chess::Square(square.file(), y+1),
+		      w2=chess::Square(square.file(), y),
+		      w3=chess::Square(square.file(), br);
+	bool p1=(y==square.rank()-1);
+	
+        if (pos.at(w2 - 1) == chess::Piece::BLACKPAWN &&
+            (p1 ||
+             (pos.at(w - 1) != chess::Piece::WHITEPAWN &&
+              !backward(pos2, w3 - 1))))
+        {
+            return 1;
+        }
+
+        if (pos.at(w2 + 1) == chess::Piece::BLACKPAWN &&
+	   (p1 ||
+             (pos.at(w+1) != chess::Piece::WHITEPAWN &&
+              !backward(pos2, w3 + 1))))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int outpost_square(const chess::Position &pos, const chess::Square &square)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, outpost_square);
+    if (square.rank() != chess::Rank::RANK_5)
+        return 0;
+
+    if (pos.at(square + 15) != chess::Piece::WHITEPAWN &&
+        pos.at(square + 17) != chess::Piece::WHITEPAWN)
+        return 0;
+
+    if (pawn_attacks_span(pos, square))
+        return 0;
+
+    return 1;
+}
+
+inline int pawns_mg(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, pawns_mg);
+    int v = 0;
+    if (doubled_isolated(pos, square))
+        v -= 11;
+    else if (isolated(pos, square))
+        v -= 5;
+    else if (backward(pos, square))
+        v -= 9;
+    v -= doubled(pos, square) * 11;
+    v += connected(pos, square) ? connected_bonus(pos, square) : 0;
+    v -= 13 * weak_unopposed_pawn(pos, square);
+    v += std::vector<int>{0, -11, -3}[blocked(pos, square)];
+    return v;
+}
+int reachable_outpost(const chess::Position &pos, chess::Square square)
+{
+    chess::Piece piece = pos.at(square);
+
+    int v = 0;
+    bool isKnight = (piece == chess::Piece::WHITEKNIGHT);
+
+    for (int x = 0; x < 8; x++)
+    {
+        for (int y = 2; y < 5; y++)
+        {
+            chess::Square target = chess::Square(chess::File(x), y);
+            if (pos.at(target) != chess::Piece::NONE)
+                continue;
+
+            chess::Bitboard attacks = isKnight
+                                   ? chess::attacks::knight(target)
+                                   : chess::attacks::bishop(target, pos.occ());
+
+            if ((attacks & (1ULL << square.index())) && outpost_square(pos, target))
+            {
+                v = std::max(v, (pos.at(target + 15) == chess::Piece::WHITEPAWN ||
+                                 pos.at(target + 17) == chess::Piece::WHITEPAWN) +
+                                    1);
+            }
+        }
+    }
+    return v;
+}
+
+int outpost_total(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, outpost_total);
+
+    chess::Piece piece = pos.at(square);
+    if (piece != chess::Piece::WHITEKNIGHT && piece != chess::Piece::WHITEBISHOP)
+        return 0;
+
+    bool knight = (piece == chess::Piece::WHITEKNIGHT);
+    if (outpost_square(pos, square))
+    {
+        return knight || reachable_outpost(pos, square);
+    }
+
+    if (knight && square.file() < chess::File::FILE_B || square.file() > chess::File::FILE_G)
+    {
+        bool enemy_attacks = false;
+        int same_side_control = 0;
+        chess::Bitboard bb = pos.us(chess::Color::BLACK);
+        while (bb)
+        {
+            chess::Square sq = bb.pop();
+            if ((std::abs(square.file() - sq.file()) == 2 && std::abs(square.rank() - sq.rank()) == 1) ||
+                (std::abs(square.file() - sq.file()) == 1 && std::abs(square.rank() - sq.rank()) == 2))
+            {
+                enemy_attacks = true;
+            }
+
+            if ((sq.file() < chess::File::FILE_E && square.file() < chess::File::FILE_E) ||
+                (sq.file() >= chess::File::FILE_E && square.file() >= chess::File::FILE_E))
+            {
+                same_side_control++;
+            }
+        }
+
+        if (!enemy_attacks && same_side_control <= 1)
+            return 2;
+    }
+
+    return knight ? 4 : 3;
+}
+inline int minor_behind_pawn(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, minor_behind_pawn);
+    chess::Piece piece = pos.at(square);
+    if (piece != chess::Piece::WHITEKNIGHT && piece != chess::Piece::WHITEBISHOP)
+        return 0;
+    if (pos.at(square - 8).type() != chess::PieceType::PAWN)
+        return 0;
+    return 1;
+}
+int bishop_pawns(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, bishop_pawns);
+    if (pos.at(square) != chess::Piece::WHITEBISHOP)
+        return 0;
+    int x = square.file();
+
+    int c = (x + (int)square.rank()) & 1, v = 0, _blocked = 0;
+    chess::Bitboard bb = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE);
     while (bb)
     {
-        int square = bb.pop(); // Use the optimized msb function
-        iter.push_back(square);
+        chess::Square sq(bb.pop());
+        chess::Piece piece = pos.at(sq);
+        if (c == (int(sq.file()) + int(sq.rank())) & 1)
+            v++;
+        if (x > 1 && x < 6 && pos.at(sq - 8) != chess::Piece::NONE)
+            _blocked++;
     }
-    return iter;
+    return v * (_blocked + (bool)(chess::attacks::pawn(pos.at(square).color(), square).count()));
 }
-// **1. Evaluate Bad Bishops**
-int evaluateBadBishops(const chess::Position& board) {
-    auto myBishops = board.pieces(chess::PieceType::underlying::BISHOP, board.sideToMove());
-    U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
+inline int bishop_xray_pawns(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, bishop_xray_pawns);
+    if (pos.at(square) != chess::Piece::WHITEBISHOP)
+        return 0;
+    int count = 0;
+    chess::Bitboard bb = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK) & 0x8142241818244281;
+    return bb.count();
+}
+inline int rook_on_queen_file(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, rook_on_queen_file);
+    if (pos.at(square) != chess::Piece::WHITEROOK)
+        return 0;
+    return !pos.pieces(chess::PieceType::QUEEN) & chess::Bitboard(chess::File(square.file())).empty();
+}
+
+int king_ring(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, king_ring);
+
+    int x = static_cast<int>(square.file());
+    int y = static_cast<int>(square.rank());
+
+    // Precompute the white king's position
+    chess::Square whiteKingSq = pos.kingSq(chess::Color::WHITE);
+
+    // Early exit if the white king is within distance 2
+    if (chess::Square::value_distance(square, whiteKingSq) <= 2)
+        return 1;
+
+    // Check if square is defended by black pawns
+    bool leftPawn = (square > 8 && pos.at(square - 17) == chess::Piece::BLACKPAWN);
+    bool rightPawn = ((1 << square.index()) & 0xfcfcfcfcfc7dfc) && pos.at(square - 15) == chess::Piece::BLACKPAWN;
+
+    return leftPawn && rightPawn;
+}
+
+inline int rook_on_king_ring(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, rook_on_king_ring);
+    if (pos.at(square) != chess::Piece::WHITEROOK)
+        return 0;
+    if (pos.inCheck() * (pos.sideToMove() == chess::Color::WHITE ? 1 : -1) > 0)
+        return 0;
+    for (int y = 0; y < 8; y++)
+    {
+        if (king_ring(pos, chess::Square(square.file(), y)))
+            return 1;
+    }
+    return 0;
+}
+int bishop_on_king_ring(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+{
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, bishop_on_king_ring);
+    if (pos.at(square) != chess::Piece::WHITEBISHOP||
+        pos.inCheck())
+        return 0;
+    for (int i = 0; i < 4; i++)
+    {
+        chess::File ix = ((i > 1) * 2 - 1) + square.file();
+        chess::Rank iy = ((i % 2 == 0) * 2 - 1) + square.rank();
+        for (int d = 1;
+             d < 8 ||
+             (ix <= chess::File::FILE_H) ||
+             (iy <= chess::Rank::RANK_8);
+             d++, ix = ix + d, iy = iy + d)
+        {
+            if (king_ring(pos, chess::Square(ix, iy)))
+                return 1;
+            if (pos.at(chess::Square(ix, iy)).type() != chess::PieceType::PAWN) break;
+        }
+    }
+    return 0;
+}
+int rook_on_file(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, rook_on_file);
+    if (pos.at(square) != chess::Piece::WHITEROOK)
+        return 0;
+    int open=1;
+    for (int i = 0; i < 8; i++)
+    {
+        const chess::Piece p=pos.at(chess::Square(square.file(), i));
+        if (p == chess::Piece::WHITEPAWN) return 0;
+        if (p == chess::Piece::BLACKPAWN) open = 0;
+    }
+    return open+1;
+}
+class MoveGenHook: chess::movegen{
+public:
+    template <Color::underlying c, PieceType::underlying pt>
+    [[nodiscard]] static Bitboard ppinMask(const Board &board, Square sq, Bitboard occ_enemy, Bitboard occ_us) noexcept{
+pinMask<c,pt>(board, sq,occ_enemy,occ_us);
+}
+}
+int blockers_for_king(const chess::Position& pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
+    if (square == chess::Square::underlying::NO_SQ)
+	return sum(pos, blockers_for_king);
+    if (pinned_direction(colorflip(pos),
+			 chess::Square(square.file(), 7-square.rank())
+	return 1;
+}
+int mobility_area(const chess::Position& pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
+    if (square == chess::Square::underlying::NO_SQ)
+	return sum(pos, mobility_area);
+    chess::PieceType b=pos.at(square).type();
+    if (b==chess::Piece::WHITEQUEEN&&
+        b==chess::Piece::WHITEKING)
+	return 0;
+    if (pos.at(square-9)==chess::Piece::BLACKPAWN||
+	pos.at(square+7)==chess::Piece::BLACKPAWN)
+	return 0;
+    if (b==chess::Piece::WHITEPAWN&&
+	(square.rank()<4||pos.at(square-1)!=chess::Piece::NONE))
+	return 0;
+    if (blockers_for_king(colorflip(pos),
+			  chess::Square(square.file(), 7-square.rank()))
+	return 0;
+    return 1;
+}
+int mobility(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, mobility);
+    int v=0;
+    chess::PieceType b=pos.at(square).type();
+    if (b!=chess::PieceType::NONE&& //most likely
+        b!=chess::PieceType::PAWN&&
+        b!=chess::PieceType::KING) //definitely, but only 2
+        return 0;
+    for (int i=0;i<64;i++){
+	
+    }
+}
+int trapped_rook(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
+    if (square == chess::Square::underlying::NO_SQ)
+        return sum(pos, trapped_rook);
     
-    int score = 0;
-    while (myBishops) {
-        chess::Square pos = myBishops.pop();
-        
-        if (countBits(pos.is_dark() ? (myPawns & DARK_SQUARES) : (myPawns & LIGHT_SQUARES)) > 3) {
-            score -= EvalWeights::getWeight(EvalKey::BADBISHOP); // Penalty for bad bishop
-        }
-    }
-    return score;
+    if (pos.at(square) != chess::Piece::WHITEROOK||
+        rook_on_file(pos, square)||
+        mobility(pos, square)>3)return 0;
 }
-int evaluateKingSafety(const chess::Position& board) {
-    // 1) One-time fetches
-    const int side = board.sideToMove();
-    const int ksq  = board.kingSq(side).index();
-    const U64 king = 1ULL << ksq;
+int pieces_mg(const chess::Position &pos)
+{
+    int v = 0;
+    chess::Bitboard pieces = pos.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE) |
+                             pos.pieces(chess::PieceType::BISHOP, chess::Color::WHITE) |
+                             pos.pieces(chess::PieceType::ROOK, chess::Color::WHITE) |
+                             pos.pieces(chess::PieceType::QUEEN, chess::Color::WHITE);
 
-    U64 ownPawns    = board.pieces(chess::PieceType::underlying::PAWN, side).getBits();
-    U64 enemyPieces = board.them(side).getBits();
-
-    // 2) Preload all weights into locals
-    constexpr int COVER_BONUS   = 5;
-    const int wWeakCover      = EvalWeights::getWeight(EvalKey::WEAKCOVER);
-    const int wMissingPawn    = EvalWeights::getWeight(EvalKey::MISSINGPAWN);
-    const int wAttackEnemy    = EvalWeights::getWeight(EvalKey::ATTACK_ENEMY);
-    static const int phaseWeight[4] = {
-        0,
-        EvalWeights::getWeight(EvalKey::K_OPENING),
-        EvalWeights::getWeight(EvalKey::K_MIDDLE),
-        EvalWeights::getWeight(EvalKey::K_END),
-    };
-
-    // 3) Adjacent pawn cover: north, east, west
-    U64 maskN = king << 8;
-    U64 maskE = (king & ~FILE_H) >> 1;
-    U64 maskW = (king & ~FILE_A) << 1;
-    U64 coverMask = maskN | maskE | maskW;
-    int score = POPCOUNT64(coverMask & ownPawns) * COVER_BONUS;
-
-    // 4) Weak cover: enemy pressure on the square in front of king without pawn shield
-    U64 frontShield = (side ? (king << 8) : (king >> 8)) & ownPawns;
-    U64 frontAttack = (side ? (king >> 8) : (king << 8)) & enemyPieces;
-    U64 weakMask    = frontAttack & ~frontShield;
-    score -= wWeakCover * POPCOUNT64(weakMask);
-
-    // 5) Missing pawns in front (one and two ranks ahead)
-    U64 f1 = (side ? king << 8  : king >> 8);
-    U64 f2 = (side ? king << 16 : king >> 16);
-    U64 inFront = f1 | f2;
-    int present = POPCOUNT64(ownPawns & inFront);
-    score -= (2 - present) * wMissingPawn;
-
-    // 6) Penalize total enemy attacks
-    score -= POPCOUNT64(enemyPieces) * wAttackEnemy;
-
-    // 7) Phase adjustment
-    int p = phase(board);  // 1=open, 2=mid, 3=end
-    return score * phaseWeight[p];
-}
-// **4. Evaluate Rooks on Open/Semi-Open Files**
-int evaluateRooksOnFiles(const chess::Position& board) {
-    auto myRooks = board.pieces(chess::PieceType::underlying::ROOK, board.sideToMove());
-    U64 myPawns = board.pieces(chess::PieceType::underlying::PAWN, board.sideToMove()).getBits();
-    
-    int score = 0;
-    while (myRooks) {
-        int pos=myRooks.pop();
-        int c=POPCOUNT64(myPawns & FILES[pos&7]); // No pawns on file = open
-        if (c==0) score += EvalWeights::getWeight(EvalKey::OPEN_FILES);
-        else if (c==1) score += EvalWeights::getWeight(EvalKey::SEMI_OPEN_FILES);
-    }
-    return score;
-}
-constexpr uint64_t shiftLeft(int position) {
-    return 1ULL << position;
-}
-
-int evaluateFianchetto(const chess::Position& board) {
-    // Define positions for bishops and pawns based on side to move
-    constexpr int fianchettoBishops[2][2] = {{6, 2}, {62, 58}}; // [White][Black] bishops
-    constexpr int fianchettoPawns[2][2][2] = {{{5, 7}, {1, 3}}, {{61, 63}, {57, 59}}}; // [White][Black] pawns
-
-    // Get the current side to move
-    int side = board.sideToMove();
-
-    // Precompute the left-shifted bit positions for the pawns at fianchetto positions at compile-time
-    constexpr uint64_t fianchettoPawnMask1 = shiftLeft(fianchettoPawns[0][0][0]) | shiftLeft(fianchettoPawns[0][0][1]);
-    constexpr uint64_t fianchettoPawnMask2 = shiftLeft(fianchettoPawns[0][1][0]) | shiftLeft(fianchettoPawns[0][1][1]);
-    constexpr uint64_t fianchettoPawnMask3 = shiftLeft(fianchettoPawns[1][0][0]) | shiftLeft(fianchettoPawns[1][0][1]);
-    constexpr uint64_t fianchettoPawnMask4 = shiftLeft(fianchettoPawns[1][1][0]) | shiftLeft(fianchettoPawns[1][1][1]);
-
-    // Combine the two masks into a single mask for more efficient checking
-    constexpr uint64_t combinedFianchettoPawnMaskWhite = fianchettoPawnMask1 | fianchettoPawnMask2;
-    constexpr uint64_t combinedFianchettoPawnMaskBlack = fianchettoPawnMask3 | fianchettoPawnMask4;
-
-    // Get the positions of bishops for the current side to move
-    auto myBishops = board.pieces(chess::PieceType::underlying::BISHOP, side);
-    auto myPawns = board.pieces(chess::PieceType::underlying::PAWN, side);
-
-    // Precompute the bishop positions for the current side to move
-    int bishopPos1 = fianchettoBishops[side][0];
-    int bishopPos2 = fianchettoBishops[side][1];
-
-    int score = 0;
-
-    // Iterate through all the bishops
-    while (myBishops) {
-        int pos = myBishops.pop();
-
-        // Check if the bishop is in a fianchetto position
-        if (pos == bishopPos1 || pos == bishopPos2) {
-            // Check if the pawns are in the corresponding fianchetto positions
-            if ((side == 0 && (myPawns & combinedFianchettoPawnMaskWhite)) || 
-                (side == 1 && (myPawns & combinedFianchettoPawnMaskBlack))) {
-                score += EvalWeights::getWeight(EvalKey::FIANCHETTO); // Bonus for fianchetto structure
-            }
-        }
+    while (pieces)
+    {
+        chess::Square square(pieces.pop()); // Get and remove the LSB
+        v += std::array<int, 5>{0, 31, -7, 30, 56}[outpost_total(pos, square)];
+        v += 18 * minor_behind_pawn(pos, square);
+        v -= 3 * bishop_pawns(pos, square);
+        v -= 4 * bishop_xray_pawns(pos, square);
+        v += 6 * rook_on_queen_file(pos, square);
+        v += 16 * rook_on_king_ring(pos, square);
+        v += 24 * bishop_on_king_ring(pos, square);
+        v += std::array<int, 3>{0, 19, 48}[rook_on_file(pos, square)];
+        v -= trapped_rook(pos, square) * 55 * (pos.castlingRights().has(chess::Color::WHITE) + 1);
+        v -= 56 * weak_queen(pos, square);
+        v -= 2 * queen_infiltration(pos, square);
+        v -= (pos.at(square) == chess::Piece::WHITEKNIGHT ? 8 : 6) * king_protector(pos, square);
+        v += 45 * long_diagonal_bishop(pos, square);
     }
 
-    return score;
-}
-// precompute, at compile-time, for each square the bitboard of N,S,E,W neighbors
-static constexpr U64 makeNeighbors(int sq) {
-    U64 m = 0;
-    int file = sq & 7;
-    if (file > 0)        m |= 1ULL << (sq - 1);  // W
-    if (file < 7)        m |= 1ULL << (sq + 1);  // E
-    if (sq >= 8)         m |= 1ULL << (sq - 8);  // N
-    if (sq < 56)         m |= 1ULL << (sq + 8);  // S
-    return m;
-}
-static constexpr std::array<U64,64> orthogonal = [](){
-    std::array<U64,64> a = {};
-    for(int i = 0; i < 64; ++i) a[i] = makeNeighbors(i);
-    return a;
-}();
-int evaluateTrappedPieces(const chess::Position& board) {
-    int side       = board.sideToMove();
-    auto myPieces  = board.us(side);
-    U64 myPawns    = board.pieces(chess::PieceType::underlying::PAWN, side).getBits();
-    U64 enemyAttks = board.them(side).getBits();
-
-    // Precompute once:
-    U64 blockers   = myPawns | enemyAttks;
-    U64 freeSquares = ~blockers;  
-
-    int trapped = 0;
-    while (myPieces) {
-        int sq = myPieces.pop();  
-        // only one AND and one compare-to-zero per piece
-        if ((orthogonal[sq] & freeSquares) == 0) {
-            ++trapped;
-        }
-    }
-
-    return trapped * EvalWeights::getWeight(EvalKey::TRAPPED);
+    return v;
 }
 
-int evaluateKnightForks(const chess::Position& board) {
-    chess::Bitboard myKnights = board.pieces(chess::PieceType::KNIGHT, board.sideToMove());
-    chess::Bitboard enemyPieces = board.them(board.sideToMove());
-
-    int forkScore = 0;
-
-    // Iterate over each knight
-    for (int knightSq : scan_reversed(myKnights)) {
-        chess::Bitboard attacks = getKnightAttacks(chess::Square(knightSq));
-        const int attackedPieces = (attacks & enemyPieces).count();
-
-        if (attackedPieces >= 2) { // Only count forks if at least two enemy pieces are attacked
-            forkScore += attackedPieces * EvalWeights::getWeight(EvalKey::FORK);
-        }
-    }
-
-    return forkScore;
+int middle_game_evaluation(const chess::Position &pos, bool nowinnable = false)
+{
+    int v = 0;
+    v += piece_value_mg(pos) - piece_value_mg(colorflip(pos));
+    v += psqt_mg(pos) - psqt_mg(colorflip(pos));
+    v += imbalance_total(pos);
+    v += pawns_mg(pos) - pawns_mg(colorflip(pos));
+    v += pieces_mg(pos) - pieces_mg(colorflip(pos));
+    v += mobility_mg(pos) - mobility_mg(colorflip(pos));
+    v += threats_mg(pos) - threats_mg(colorflip(pos));
+    v += passed_mg(pos) - passed_mg(colorflip(pos));
+    v += space(pos) - space(colorflip(pos));
+    v += king_mg(pos) - king_mg(colorflip(pos));
+    if (!nowinnable)
+        v += winnable_total_mg(pos, v);
+    return v;
 }
-// Precompute the forward‐area masks at compile time
-static constexpr U64 SPACE_MASKS[2] = {
-    RANK_4 | RANK_5,  // White’s forward area
-    RANK_5 | RANK_7   // Black’s forward area
-};
-
-int evaluateSpaceControl(const chess::Position& board) {
-    const int side    = board.sideToMove();
-    const U64 pawns   = board.pieces(chess::PieceType::underlying::PAWN, side).getBits();
-    const U64 mask    = SPACE_MASKS[side];
-    const int weight  = EvalWeights::getWeight(EvalKey::SPACE);
-
-    // single AND + popcount + multiply
-    return weight * POPCOUNT64(pawns & mask);
-}
-
-int evaluateTempo(chess::Position& board) {
-    chess::Movelist myMoves, opponentMoves;
-    
-    // Generate all legal moves for both sides
-    chess::movegen::legalmoves(myMoves, board);
-    
-    board.makeNullMove();  // Temporarily switch turn
-    chess::movegen::legalmoves(opponentMoves, board);
-    board.unmakeNullMove();  // Restore the board state
-
-    int myMoveCount = myMoves.size();
-    int opponentMoveCount = opponentMoves.size();
-
-    // Forced moves (when in check)
-    int forcedMoves = board.inCheck() ? myMoveCount : 0;
-
-    // Final tempo calculation
-    return (myMoveCount - forcedMoves) * EvalWeights::getWeight(EvalKey::TEMPO_FREEDOM_WEIGHT) - opponentMoveCount * EvalWeights::getWeight(EvalKey::TEMPO_OPPONENT_MOBILITY_PENALTY);
-}
-int center_control(const chess::Position& board) {
-	const int CENTER_CONTROL_BONUS[64] = {
-    	0, 0, 0, 5, 5, 0, 0, 0,  
-    	0, 10, 15, 20, 20, 15, 10, 0,
-    	0, 15, 30, 40, 40, 30, 15, 0,
-    	5, 20, 40, 60, 60, 40, 20, 5,
-    	5, 20, 40, 60, 60, 40, 20, 5,
-    	0, 15, 30, 40, 40, 30, 15, 0,
-    	0, 10, 15, 20, 20, 15, 10, 0,
-    	0, 0, 0, 5, 5, 0, 0, 0   
-	};
-
-    int score = 0;
-    auto myPieces = board.us(board.sideToMove());
-
-    while (myPieces) {
-        int sq = myPieces.pop();  // Get piece square index
-        score += CENTER_CONTROL_BONUS[sq];   // Reward based on square
-    }
-    return score;
-}
-
-int key_center_squares_control(const chess::Position& board) {
-    int score = 0;
-    chess::Bitboard central_squares(0x1818000000);
-    
-    auto myPieces = board.us(board.sideToMove());
-
-    while (myPieces) {
-        int sq = myPieces.pop();
-        if (central_squares.check(sq)) {
-            score += EvalWeights::getWeight(EvalKey::KEY_CENTER); // Reward controlling these squares
-        }
-    }
-    return score;
-}
-// precompute your file masks once at compile time:
-static constexpr U64 FILE_MASKS[8] = {
-    0x0101010101010101ULL << 0,  // file A
-    0x0101010101010101ULL << 1,  // file B
-    0x0101010101010101ULL << 2,  // file C
-    0x0101010101010101ULL << 3,  // file D
-    0x0101010101010101ULL << 4,  // file E
-    0x0101010101010101ULL << 5,  // file F
-    0x0101010101010101ULL << 6,  // file G
-    0x0101010101010101ULL << 7   // file H
-};
-
-int rook_placement(const chess::Position& board) {
-    const int side      = board.sideToMove();
-    const U64 rooks     = board.pieces(chess::PieceType::ROOK, side).getBits();
-    if (!rooks) return 0;
-
-    const U64 occ       = board.occ().getBits();
-    const U64 myPawns   = board.pieces(chess::PieceType::PAWN, side).getBits();
-
-    const int wOpen     = EvalWeights::getWeight(EvalKey::OPEN_FILES);
-    const int wSemi     = EvalWeights::getWeight(EvalKey::SEMI_OPEN_FILES);
-
-    // build file‐masks in one 8‐step scan
-    U64 openMask = 0, semiMask = 0;
-    for (int f = 0; f < 8; ++f) {
-        U64 m = FILE_MASKS[f];
-        if ((m & occ) == 0) {
-            openMask |= m;            // truly open file
-        } else if ((m & myPawns) == 0) {
-            semiMask |= m;            // no friendly pawn => semi-open
-        }
-    }
-    return POPCOUNT64(rooks & openMask) * wOpen
-         + POPCOUNT64(rooks & semiMask) * wSemi;
-}
-
-int development(const chess::Position& board) {
-    // --- 1) Precompute bitboards once ---
-    const U64 wKnights = board.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE).getBits();
-    const U64 wBishops = board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).getBits();
-    const U64 wRooks   = board.pieces(chess::PieceType::ROOK,   chess::Color::WHITE).getBits();
-    const U64 wQueen   = board.pieces(chess::PieceType::QUEEN,  chess::Color::WHITE).getBits();
-
-    const U64 bKnights = board.pieces(chess::PieceType::KNIGHT, chess::Color::BLACK).getBits();
-    const U64 bBishops = board.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).getBits();
-    const U64 bRooks   = board.pieces(chess::PieceType::ROOK,   chess::Color::BLACK).getBits();
-    const U64 bQueen   = board.pieces(chess::PieceType::QUEEN,  chess::Color::BLACK).getBits();
-
-    const int   ph = phase(board);  // 1=open, 2=mid, 3=end
-
-    // --- 2) All masks at compile time ---
-    // White home squares
-    constexpr U64 HOME_KNIGHT_W  = (1ULL<<1)  | (1ULL<<6);   // b1, g1
-    constexpr U64 HOME_BISHOP_W  = (1ULL<<2)  | (1ULL<<5);   // c1, f1
-    constexpr U64 HOME_ROOK_W    = (1ULL<<0)  | (1ULL<<7);   // a1, h1
-    constexpr U64 HOME_QUEEN_W   =  1ULL<<3;                 // d1
-
-    // Black home squares (mirrored on rank 8)
-    constexpr U64 HOME_KNIGHT_B  = (1ULL<<57) | (1ULL<<62);  // b8, g8
-    constexpr U64 HOME_BISHOP_B  = (1ULL<<58) | (1ULL<<61);  // c8, f8
-    constexpr U64 HOME_ROOK_B    = (1ULL<<56) | (1ULL<<63);  // a8, h8
-    constexpr U64 HOME_QUEEN_B   =  1ULL<<59;                // d8
-
-    // --- 3) Fetch all weights once ---
-    const int wKn  = EvalWeights::getWeight(EvalKey::UNDEV_KNIGHT);
-    const int wBi  = EvalWeights::getWeight(EvalKey::UNDEV_BISHOP);
-    const int wRk  = EvalWeights::getWeight(EvalKey::UNDEV_ROOK);
-    const int wQ   = EvalWeights::getWeight(EvalKey::DEV_QUEEN);
-
-    // --- 4) Count “undeveloped” pieces per color ---
-    const int uw = POPCOUNT64(wKnights & HOME_KNIGHT_W);
-    const int ub = POPCOUNT64(wBishops & HOME_BISHOP_W);
-    const int ur = POPCOUNT64(wRooks   & HOME_ROOK_W);
-
-    const int bw = POPCOUNT64(bKnights & HOME_KNIGHT_B);
-    const int bb = POPCOUNT64(bBishops & HOME_BISHOP_B);
-    const int br = POPCOUNT64(bRooks   & HOME_ROOK_B);
-
-    // --- 5) Build penalty from knights, bishops, rooks ---
-    int penalty = -wKn * ( uw - bw ) - wBi * ( ub - bb ) - wRk * ( ur - br );
-
-    // --- 6) Early‐queen penalty in opening only ---
-    if (ph == 1) {
-        // if queen bitboard has any bit OUTSIDE its home square, it’s moved
-        if ( (wQueen & ~HOME_QUEEN_W) != 0 ) penalty -= wQ;
-        if ( (bQueen & ~HOME_QUEEN_B) != 0 ) penalty += wQ;
-    }
-
-    return penalty;
-}
-
-
-int piece_activity(const chess::Position& board) {
-	const int PIECE_ACTIVITY_BONUS[64] = {
-    	0, 0, 0, 5, 5, 0, 0, 0,  // Edge ranks penalized
-    	0, 10, 15, 20, 20, 15, 10, 0,
-    	0, 15, 30, 40, 40, 30, 15, 0,
-    	5, 20, 40, 60, 60, 40, 20, 5,
-    	5, 20, 40, 60, 60, 40, 20, 5,
-    	0, 15, 30, 40, 40, 30, 15, 0,
-    	0, 10, 15, 20, 20, 15, 10, 0,
-    	0, 0, 0, 5, 5, 0, 0, 0   // Edge ranks penalized
-	};
-
-    int score = 0;
-    chess::Bitboard myPieces = board.us(board.sideToMove());
-    
-    while (myPieces) {
-        int sq = myPieces.pop();
-        score += PIECE_ACTIVITY_BONUS[sq]; // Reward centralization
-    }
-    return score;
-}
-int evaluatePieceActivity(const chess::Position& board) {
-    int score = 0;
-    chess::Bitboard myPieces = board.us(board.sideToMove()),
-                    enemyPieces = board.them(board.sideToMove());
-
-    // Reward active pieces (knights, bishops, rooks, queens)
-    while (myPieces) {
-        chess::Square sq = myPieces.pop();
-        auto attacks = chess::attacks::attackers(board, board.sideToMove(), sq);
-
-        // Bonus for attacking enemy pieces
-        score += (attacks & enemyPieces).count();
-    }
-
-    return score * EvalWeights::getWeight(EvalKey::ATTACK_ENEMY);
-}
-// **1. Back Rank Mate Detection**
-inline bool isBackRankMate(U64 king, U64 enemyRooks, U64 enemyQueens, bool isWhite) {
-    U64 backRank = isWhite ? RANK_1 : RANK_8;
-    return (king & backRank) && ((enemyRooks | enemyQueens) & backRank);
-}
-
-// **2. Skewer Detection**
-inline bool isSkewer(U64 attacker, U64 target, U64 behindTarget) {
-    return (attacker & target) && (behindTarget & target);
-}
-// **4. X-Ray Attack Detection**
-inline bool isXRayAttack(U64 attacker, U64 blocker, U64 target) {
-    return (attacker & blocker) && (attacker & target);
-}
-inline bool isTrappedPiece(const chess::Position& board, chess::Square pieceSq) {
-    chess::Piece piece = board.at(pieceSq);
-    if (piece == chess::Piece::NONE) return false;  // No piece → not trapped
-
-    chess::Color side = piece.color();
-    chess::PieceType type = piece.type();
-
-    // **1. Generate legal moves for the piece**
-    chess::Movelist moves;
-    chess::movegen::legalmoves(moves, board);
-
-    // **2. If the piece has no legal moves and is attacked, it is trapped**
-    if (moves.empty() && !chess::attacks::attackers(board, ~side, pieceSq).empty()) {
-        return true;
-    }
-
-    // **3. Special Conditions for Specific Pieces**
-    const auto occ = board.occ();
-    chess::Piece p;
-
-    switch (type) {
-        case chess::KNIGHT: {
-            auto knightAttacks = chess::attacks::knight(pieceSq);
-            while (knightAttacks) {
-                int sq = knightAttacks.pop();  // Extract LSB (fast)
-                p = board.at(sq);
-                if (p == chess::Piece::NONE || p.color() != side) {
-                    return false; // The knight has a safe escape
-                }
-            }
-            return true;
-        }
-
-        case chess::BISHOP: {
-            auto bishopAttacks = chess::attacks::bishop(pieceSq, occ);
-            while (bishopAttacks) {
-                int sq = bishopAttacks.pop();  // Extract LSB (fast)
-                p = board.at(sq);
-                if (p == chess::Piece::NONE || p.color() != side) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        case chess::ROOK: {
-            auto rookAttacks = chess::attacks::rook(pieceSq, occ);
-            while (rookAttacks) {
-                int sq = rookAttacks.pop();  // Extract LSB (fast)
-                p = board.at(sq);
-                if (p == chess::Piece::NONE || p.color() != side) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        case chess::QUEEN: {
-            auto queenAttacks = chess::attacks::queen(pieceSq, occ);
-            while (queenAttacks) {
-                int sq = queenAttacks.pop();  // Extract LSB (fast)
-                p = board.at(sq);
-                if (p == chess::Piece::NONE || p.color() != side) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        case chess::KING:
-            // A king is trapped if it is completely surrounded **and attacked**
-            return moves.empty() && !chess::attacks::attackers(board, ~side, pieceSq).empty();
-
-        default:
-            return false;  // Pawns and other cases do not need special checks
-    }
-}
-
-inline bool isPinned(chess::Position& board, chess::Square pieceSq) {
-    chess::Color side = board.at(pieceSq).color();
-    chess::Square kingSq = board.kingSq(side);
-
-    board.makeNullMove();
-    bool isPinned = !chess::attacks::attackers(board, ~side, kingSq).empty();
-    board.unmakeNullMove();
-
-    return isPinned;
-}
-int evaluateTactics(const chess::Position& board) {
-    chess::Square ksq = board.kingSq(board.sideToMove());
-    int score = 0;
-
-    auto myPieces = board.us(board.sideToMove());
-    auto enemyPieces = board.them(board.sideToMove());
-
-    // **1. Pin Check**
-    auto pinnedPieces = myPieces;  // Cache the bitboard
-    while (pinnedPieces) {
-        int pieceSq = pinnedPieces.pop();
-        if (isPinned(const_cast<chess::Position&>(board), chess::Square(pieceSq))) {
-            score -= EvalWeights::getWeight(EvalKey::PINNED);
-        }
-    }
-
-    // **2. Skewer Check** (Optimized)
-    auto skewerAttackers = (board.pieces(chess::PieceType::ROOK, board.sideToMove()) |
-                            board.pieces(chess::PieceType::QUEEN, board.sideToMove()));
-    while (skewerAttackers) {
-        int attackerSq = skewerAttackers.pop();
-
-        auto targetPieces = enemyPieces;  // Cache enemy bitboard
-        while (targetPieces) {
-            int targetSq = targetPieces.pop();
-
-            // Find pieces behind the target
-            auto behindTarget = enemyPieces;
-            while (behindTarget) {
-                int behindTargetSq = behindTarget.pop();
-
-                if (isSkewer(1ULL << attackerSq, 1ULL << targetSq, 1ULL << behindTargetSq)) {
-                    score += EvalWeights::getWeight(EvalKey::SKEWERED);
-                }
-            }
-        }
-    }
-
-    // **3. Discovered Check** (Direct Implementation)
-    if (!board.move_stack.empty() && board.inCheck()) {
-        const chess::Move& lastMove = board.move_stack.back();
-        chess::Color currentStm = board.sideToMove();
-        chess::Square kingSq = board.kingSq(currentStm);
-        chess::Color attackerColor = ~currentStm;
-        auto attackers = chess::attacks::attackers(board, attackerColor, kingSq);
-
-        chess::Square movedTo = lastMove.to();
-        bool discoveredCheck = false;
-
-        while (attackers) {
-            chess::Square attackerSq(attackers.pop());
-            if (attackerSq != movedTo) {
-                discoveredCheck = true;
-                break;
-            }
-        }
-
-        if (discoveredCheck) {
-            score += EvalWeights::getWeight(EvalKey::DISCOVERED);
-        }
-    }
-
-    // **4. X-Ray Attack Check**
-    auto xRayPieces = (board.pieces(chess::PieceType::ROOK, board.sideToMove()) |
-                       board.pieces(chess::PieceType::QUEEN, board.sideToMove()));
-    while (xRayPieces) {
-        int pieceSq = xRayPieces.pop();
-
-        auto enemyTargets = enemyPieces;
-        while (enemyTargets) {
-            int enemyPieceSq = enemyTargets.pop();
-
-            if (isXRayAttack(1ULL << pieceSq, 1ULL << enemyPieceSq, ksq.index())) {
-                score += EvalWeights::getWeight(EvalKey::DISCOVERED);
-            }
-        }
-    }
-
-    return score;
-}
-
-#define LIGHT_SQUARES  0x55aa55aa55aa55aaULL
-#define DARK_SQUARES   0xaa55aa55aa55aa55ULL
-
-// **1. Doubled Pawns Penalty**
-int doubled(U64 whitePawns, U64 blackPawns) {
-    int score = 0;
-    for (int i = 0; i < 8; ++i) {
-        int whiteCount = POPCOUNT64(whitePawns & FILES[i]);
-        int blackCount = POPCOUNT64(blackPawns & FILES[i]);
-
-        score -= (whiteCount - 1) * EvalWeights::getWeight(EvalKey::DOUBLED);
-        score += (blackCount - 1) * EvalWeights::getWeight(EvalKey::DOUBLED);
-    }
-    return score;
-}
-
-// **2. Backward Pawns**
-// This function calculates a penalty or reward for backward pawns, which are pawns that are behind
-// other pawns on the adjacent files and are unable to advance without being attacked.
-int backward(U64 whitePawns, U64 blackPawns) {
-    int score = 0;
-
-    // Loop through each file (from A to H)
-    for (int i = 0; i < 8; ++i) {
-        // Create file mask for the current file
-        U64 fileMask = FILES[i];
-        // Create masks for the adjacent files (left and right)
-        U64 leftFile = (i > 0) ? FILES[i - 1] : 0;
-        U64 rightFile = (i < 7) ? FILES[i + 1] : 0;
-
-        // Extract the pawns on the current file
-        U64 whiteFile = whitePawns & fileMask;
-        U64 blackFile = blackPawns & fileMask;
-
-        // Extract pawns from the adjacent files
-        U64 whiteAdjacent = whitePawns & (leftFile | rightFile);
-        U64 blackAdjacent = blackPawns & (leftFile | rightFile);
-
-        // Check for backward white pawns
-        while (whiteFile) {
-            int pos = lsb(whiteFile);  // Get the position of the least significant bit
-            whiteFile &= whiteFile - 1;  // Clear the least significant bit
-
-            // If there is no adjacent white pawn and the opponent has a pawn ahead, it's a backward pawn
-            if (!(whiteAdjacent & (1ULL << pos)) && (blackPawns & (fileMask >> 8))) {
-                score -= EvalWeights::getWeight(EvalKey::BACKWARD);
-            }
-        }
-
-        // Check for backward black pawns
-        while (blackFile) {
-            int pos = lsb(blackFile);  // Get the position of the least significant bit
-            blackFile &= blackFile - 1;  // Clear the least significant bit
-
-            // If there is no adjacent black pawn and the opponent has a pawn behind, it's a backward pawn
-            if (!(blackAdjacent & (1ULL << pos)) && (whitePawns & (fileMask << 8))) {
-                score += EvalWeights::getWeight(EvalKey::BACKWARD);
-            }
-        }
-    }
-
-    return score;
-}
-
-// **3. Pawn Blockage**
-int blockage(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 enemyPieces = board.them(board.sideToMove()).getBits();
-    return POPCOUNT64((board.sideToMove() ? north(pawns) : south(pawns)) & enemyPieces) * EvalWeights::getWeight(EvalKey::BLOCKED);
-}
-
-// **4. Pawn Islands**
-int pawnIslands(const chess::Position& board) {
-    int islands = 0;
-    U64 remaining = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    for (int i = 0; i < 8; ++i) {
-        if (remaining & FILES[i]) {
-            islands++;
-            remaining &= ~FILES[i];
-        }
-    }
-    return islands * EvalWeights::getWeight(EvalKey::ISLANDED);
-}
-
-// **5. Isolated & Doubly Isolated Pawns**
-int isolated(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    return POPCOUNT64(pawns & ~(west(pawns) | east(pawns))) * EvalWeights::getWeight(EvalKey::ISOLATED);
-}
-int dblisolated(const chess::Position& board) {
-    // Get the pawns for the side to move
-    chess::Bitboard pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove());
-
-    // Isolated pawns on the east (no pawns on the east)
-    chess::Bitboard isolatedEast = pawns & ~((pawns << 1) & ~chess::Bitboard(chess::File::FILE_H));
-
-    // Isolated pawns on the west (no pawns on the west)
-    chess::Bitboard isolatedWest = pawns & ~((pawns >> 1) & chess::Bitboard(chess::File::FILE_A));
-
-    // Doubly isolated pawns are those isolated both on the east and west
-    chess::Bitboard dblIsolated = isolatedEast & isolatedWest;
-
-    // Count the number of doubly isolated pawns and apply evaluation weight
-    return dblIsolated.count() * EvalWeights::getWeight(EvalKey::DBLISOLATED);
-}
-int weaks(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 enemyPawns = board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits();
-
-    // Compute left (west) and right (east) pawns once
-    U64 westPawns = west(pawns);
-    U64 eastPawns = east(pawns);
-
-    // Isolated pawns (no support from adjacent pawns)
-    U64 isolated = pawns & ~(westPawns | eastPawns);
-
-    // Pawns attacked by enemy pawns (north or south)
-    U64 attacked = (north(pawns) & enemyPawns) | (south(pawns) & enemyPawns);
-
-    // Weak pawns are either isolated or attacked by enemy pawns
-    U64 weakPawns = isolated | attacked;
-
-    return POPCOUNT64(weakPawns) * EvalWeights::getWeight(EvalKey::WEAK);
-}
-
-// **7. Pawn Race**
-int pawnRace(const chess::Position& board) {
-    auto pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove());
-    int minDistance = 8;
-    while (pawns) {
-        chess::Square pos = pawns.pop();
-        int rank = pos.rank();
-        minDistance = std::min(minDistance, board.sideToMove() ? (7 - rank) : rank);
-    }
-    return (phase(board) == 3) ? (8 - minDistance) * EvalWeights::getWeight(EvalKey::PAWNRACE) : 8 - minDistance;
-}
-
-// **8. Color Weakness (Optimized)**
-int weakness(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    
-    // Combine the pawns on dark and light squares, then count the pawns on weak squares
-    U64 weakPawns = ~(pawns & (DARK_SQUARES | LIGHT_SQUARES));
-    
-    // Count the number of pawns on weak squares and multiply by the evaluation weight
-    return POPCOUNT64(weakPawns) * EvalWeights::getWeight(EvalKey::WEAK);
-}
-
-// **9. Pawn Shield**
-int pawnShield(const chess::Position& board) {
-    U64 kingBB = 1ULL << board.kingSq(board.sideToMove()).index();
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    return POPCOUNT64(board.sideToMove() ? north(kingBB) & pawns : south(kingBB) & pawns) * EvalWeights::getWeight(EvalKey::SHIELD);
-}
-
-// **10. Pawn Storm**
-int pawnStorm(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 storm = board.sideToMove() ? (north(pawns) | north(north(pawns))) : (south(pawns) | south(south(pawns)));
-    return POPCOUNT64(storm) * EvalWeights::getWeight(EvalKey::STORM);
-}
-
-// **11. Outposts**
-int outpost(const chess::Position& board) {
-    U64 knights = board.pieces(chess::PieceType::KNIGHT, board.sideToMove()).getBits();
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 support = board.sideToMove() ? (south(knights) & pawns) : (north(knights) & pawns);
-    return POPCOUNT64(support & ~(north(pawns) | south(pawns))) * EvalWeights::getWeight(EvalKey::OUTPOST);
-}
-
-// **12. Pawn Levers**
-int pawnLevers(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 enemyPawns = board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits();
-    return POPCOUNT64((east(pawns) & enemyPawns) | (west(pawns) & enemyPawns)) * EvalWeights::getWeight(EvalKey::LEVER);
-}
-
-// **13. Pawn Rams**
-int evaluatePawnRams(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 enemyPawns = board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits();
-    return POPCOUNT64((north(pawns) & south(enemyPawns)) | (south(pawns) & north(enemyPawns))) * EvalWeights::getWeight(EvalKey::PAWNRAM);
-}
-
-// **1. Unfree Pawns (Blocked Pawns)**
-int evaluateUnfreePawns(const chess::Position& board) {
-    auto pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()), enemyPawns = board.pieces(chess::PieceType::PAWN, ~board.sideToMove()),
-         blocked = ((pawns>>8)|(pawns<<8)) & enemyPawns;
-    return blocked.count() * EvalWeights::getWeight(EvalKey::BLOCKED); // Higher penalty for blocked pawns
-}
-
-// **2. Open Pawns (Pawns with no obstacles in front)**
-int evaluateOpenPawns(const chess::Position& board) {
-    U64 pawns = board.pieces(chess::PieceType::PAWN, board.sideToMove()).getBits();
-    U64 enemyPawns = board.pieces(chess::PieceType::PAWN, ~board.sideToMove()).getBits();
-    U64 openFiles = pawns & ~(north(pawns) & enemyPawns);
-    return POPCOUNT64(openFiles) * EvalWeights::getWeight(EvalKey::OPENPAWN); // Slight reward for open files
-}
-
-// **3. Holes (Uncontested squares that cannot be controlled by pawns)**
-int holes(const chess::Position& board) {
-    U64 whitePawns = board.pieces(chess::PieceType::PAWN, chess::Color::WHITE).getBits();
-    U64 blackPawns = board.pieces(chess::PieceType::PAWN, chess::Color::BLACK).getBits();
-    U64 pawnControl = north(whitePawns) | south(blackPawns);
-    return POPCOUNT64(~pawnControl) * EvalWeights::getWeight(EvalKey::HOLES); // Penalize holes in structure
-}
-
-int underpromote(chess::Position &board) {
-    if (board.move_stack.empty()) return 0;
-
-    const chess::Move &lastMove = board.move_stack.back();
-    if (lastMove.typeOf() != chess::Move::PROMOTION) return 0;
-
-    board.pop();
-    const chess::Piece movedPiece = board.at(lastMove.from());
-    board.makeMove(lastMove);
-
-    if (!(movedPiece == chess::Piece::WHITEPAWN || movedPiece == chess::Piece::BLACKPAWN)) return 0;
-
-    const chess::Square to = lastMove.to();
-    const bool isWhite = ~board.sideToMove();
-    const U64 enemyKingBB = 1ULL << board.kingSq(~board.sideToMove()).index();
-    const U64 toBB = 1ULL << to.index();
-    const U64 enemyPieces = board.them(board.sideToMove()).getBits();
-    const U64 friendlyPieces = board.us(board.sideToMove()).getBits();
-    const int gamePhase = phase(board);
-
-    const int reward = EvalWeights::getWeight(EvalKey::UNDERPROMOTE);
-
-    if (getKingMobility(lsb(enemyKingBB), enemyPieces | friendlyPieces) == 0)
-        return reward;
-
-    if (chess::Square::back_rank(to, chess::Color(isWhite)) && (getKnightAttacks(to) & enemyKingBB))
-        return reward;
-
-    if (gamePhase == 1 && (toBB & enemyPieces))
-        return reward;
-
-    if (gamePhase == 3) {
-        if (getKnightAttacks(to) & enemyPieces) return reward;
-        if (isXRayAttack(toBB, enemyPieces, enemyKingBB)) return reward;
-    }
-
-    if (enemyPieces & getKnightAttacks(to))
-        return reward;
-
-    return (lastMove.promotionType().internal() != chess::PieceType::QUEEN) ? reward : 0;
-}
-
-// PAWN
-const int PAWN_PSQT[2][64] = {
-    { // Opening
-         0,   0,   0,   0,   0,   0,  0,  0,
-        50,  50,  50,  50,  50,  50, 50, 50,
-        10,  10,  20,  30,  30,  20, 10, 10,
-         5,   5,  10,  25,  25,  10,  5,  5,
-         0,   0,   0,  20,  20,   0,  0,  0,
-         5,  -5, -10,   0,   0, -10, -5,  5,
-         5,  10,  10, -20, -20,  10, 10,  5,
-         0,   0,   0,   0,   0,   0,  0,  0
-    },
-    { // Endgame
-         0,   0,   0,   0,   0,   0,  0,  0,
-        50,  50,  50,  50,  50,  50, 50, 50,
-        10,  10,  20,  30,  30,  20, 10, 10,
-         5,   5,  10,  25,  25,  10,  5,  5,
-         0,   0,   0,  20,  20,   0,  0,  0,
-         5,  -5, -10,   0,   0, -10, -5,  5,
-         5,  10,  10, -20, -20,  10, 10,  5,
-         0,   0,   0,   0,   0,   0,  0,  0
-    }
-};
-
-// KNIGHT
-const int KNIGHT_PSQT[2][64] = {
-    { // Opening
-        -50, -40, -30, -30, -30, -30, -40, -50,
-        -40, -20,   0,   0,   0,   0, -20, -40,
-        -30,   0,  10,  15,  15,  10,   0, -30,
-        -30,   5,  15,  20,  20,  15,   5, -30,
-        -30,   0,  15,  20,  20,  15,   0, -30,
-        -30,   5,  10,  15,  15,  10,   5, -30,
-        -40, -20,   0,   5,   5,   0, -20, -40,
-        -50, -40, -30, -30, -30, -30, -40, -50
-    },
-    { // Endgame
-        -50, -40, -30, -30, -30, -30, -40, -50,
-        -40, -20,   0,   0,   0,   0, -20, -40,
-        -30,   0,  10,  15,  15,  10,   0, -30,
-        -30,   5,  15,  20,  20,  15,   5, -30,
-        -30,   0,  15,  20,  20,  15,   0, -30,
-        -30,   5,  10,  15,  15,  10,   5, -30,
-        -40, -20,   0,   5,   5,   0, -20, -40,
-        -50, -40, -30, -30, -30, -30, -40, -50
-    }
-};
-
-// BISHOP
-const int BISHOP_PSQT[2][64] = {
-    { // Opening
-        -20, -10, -10, -10, -10, -10, -10, -20,
-        -10,   5,   0,   0,   0,   0,   5, -10,
-        -10,  10,  10,  10,  10,  10,  10, -10,
-        -10,   0,  10,  10,  10,  10,   0, -10,
-        -10,   5,   5,  10,  10,   5,   5, -10,
-        -10,   0,   5,  10,  10,   5,   0, -10,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -20, -10, -10, -10, -10, -10, -10, -20
-    },
-    { // Endgame
-        -20, -10, -10, -10, -10, -10, -10, -20,
-        -10,   5,   0,   0,   0,   0,   5, -10,
-        -10,  10,  10,  10,  10,  10,  10, -10,
-        -10,   0,  10,  10,  10,  10,   0, -10,
-        -10,   5,   5,  10,  10,   5,   5, -10,
-        -10,   0,   5,  10,  10,   5,   0, -10,
-        -10,   0,   0,   0,   0,   0,   0, -10,
-        -20, -10, -10, -10, -10, -10, -10, -20
-    }
-};
-
-// ROOK
-const int ROOK_PSQT[2][64] = {
-    { // Opening
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-        25,  25,  25,  25,  25,  25,  25,  25,
-         0,   0,   0,   5,   5,   0,   0,   0
-    },
-    { // Endgame
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-         0,   0,   5,  10,  10,   5,   0,   0,
-        25,  25,  25,  25,  25,  25,  25,  25,
-         0,   0,   0,   5,   5,   0,   0,   0
-    }
-};
-
-const int QUEEN_PSQT[2][64] = {
-    { // Opening
-        -20, -10, -10,  -5,  -5, -10, -10, -20,
-        -10,   0,   5,   0,   0,   5,   0, -10,
-        -10,   5,   5,   5,   5,   5,   5, -10,
-         -5,   0,   5,   5,   5,   5,   0,  -5,
-         -5,   0,   5,   5,   5,   5,   0,  -5,
-        -10,   5,   5,   5,   5,   5,   5, -10,
-        -10,   0,   5,   0,   0,   5,   0, -10,
-        -20, -10, -10,  -5,  -5, -10, -10, -20
-    },
-    { // Endgame
-        -10,  -5,  -5,   0,   0,  -5,  -5, -10,
-         -5,   0,   0,   5,   5,   0,   0,  -5,
-         -5,   0,   5,   5,   5,   5,   0,  -5,
-          0,   5,   5,   5,   5,   5,   5,   0,
-          0,   5,   5,   5,   5,   5,   5,   0,
-         -5,   0,   5,   5,   5,   5,   0,  -5,
-         -5,   0,   0,   5,   5,   0,   0,  -5,
-        -10,  -5,  -5,   0,   0,  -5,  -5, -10
-    }
-};
-
-// KING (simplified for space)
-const int KING_PSQT[2][64] = {
-    { // Opening
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -30, -40, -40, -50, -50, -40, -40, -30,
-        -20, -30, -30, -40, -40, -30, -30, -20,
-        -10, -20, -20, -20, -20, -20, -20, -10,
-         20,  20,   0,   0,   0,   0,  20,  20,
-         20,  30,  10,   0,   0,  10,  30,  20
-    },
-    { // Endgame
-        -50, -40, -30, -20, -20, -30, -40, -50,
-        -30, -20, -10,   0,   0, -10, -20, -30,
-        -30, -10,  20,  30,  30,  20, -10, -30,
-        -30, -10,  30,  40,  40,  30, -10, -30,
-        -30, -10,  30,  40,  40,  30, -10, -30,
-        -30, -10,  20,  30,  30,  20, -10, -30,
-        -30, -30,   0,   0,   0,   0, -30, -30,
-        -50, -30, -30, -30, -30, -30, -30, -50
-    }
-};
-int psqt_eval(const chess::Position& board) {
-    int score = 0;
-    int phaseIndex = (phase(board) == 3) ? 1 : 0; // 0 = Opening, 1 = Endgame
-    chess::Color side = board.sideToMove();
-    
-    U64 pieces = board.us(side).getBits();
-    
-    while (pieces) {
-        int sq = lsb(pieces);
-        chess::Piece piece = board.at(sq);
-        // Flip square for Black (mirror vertically)
-        int mirrorSq = (side == chess::Color::WHITE) ? sq : (sq ^ 56);
-
-        switch (piece.type().internal()) {
-            case chess::PieceType::underlying::PAWN:
-                score += PAWN_PSQT[phaseIndex][mirrorSq];
-                break;
-            case chess::PieceType::underlying::KNIGHT:
-                score += KNIGHT_PSQT[phaseIndex][mirrorSq];
-                break;
-            case chess::PieceType::underlying::BISHOP:
-                score += BISHOP_PSQT[phaseIndex][mirrorSq];
-                break;
-            case chess::PieceType::underlying::ROOK:
-                score += ROOK_PSQT[phaseIndex][mirrorSq];
-                break;
-            case chess::PieceType::underlying::QUEEN:
-                score += QUEEN_PSQT[phaseIndex][mirrorSq];
-                break;
-            case chess::PieceType::underlying::KING:
-                score += KING_PSQT[phaseIndex][mirrorSq];
-                break;
-            default:
-                break;
-        }
-
-        pieces &= pieces - 1; // Remove LSB
-    }
-    return score; // Negate for Black
-}
-TranspositionTable evaltt(5);
-unsigned long long evalhits=0;
-int eval(chess::Position &board) {
-    U64 hash = board.hash();
-    if (TTEntry* entry=evaltt.probe(hash)){
-        evalhits++;
-        return entry->score();
-    }
-    // Precompute piece counts (avoid multiple function calls)
-    int pieceCount[10] = {
-        board.pieces(chess::PieceType::PAWN, chess::Color::WHITE).count(),
-        board.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE).count(),
-        board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count(),
-        board.pieces(chess::PieceType::ROOK, chess::Color::WHITE).count(),
-        board.pieces(chess::PieceType::QUEEN, chess::Color::WHITE).count(),
-        board.pieces(chess::PieceType::PAWN, chess::Color::BLACK).count(),
-        board.pieces(chess::PieceType::KNIGHT, chess::Color::BLACK).count(),
-        board.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).count(),
-        board.pieces(chess::PieceType::ROOK, chess::Color::BLACK).count(),
-        board.pieces(chess::PieceType::QUEEN, chess::Color::BLACK).count(),
-    };
-
-    // Compute material score
-    int eval = (EvalWeights::getWeight(EvalKey::PAWN) * (pieceCount[0] - pieceCount[5])) +
-               (EvalWeights::getWeight(EvalKey::KNIGHT) * (pieceCount[1] - pieceCount[6])) +
-               (EvalWeights::getWeight(EvalKey::BISHOP) * (pieceCount[2] - pieceCount[7])) +
-               (EvalWeights::getWeight(EvalKey::ROOK) * (pieceCount[3] - pieceCount[8])) +
-               (EvalWeights::getWeight(EvalKey::QUEEN) * (pieceCount[4] - pieceCount[9]));
-    
-    // Evaluate positional aspects
-    eval += evaluateKingSafety(board);
-    eval += evaluatePawnStructure(board);
-    eval += evaluatePieces(board);
-    eval += evaluateTactics(board);
-    eval += piece_activity(board);
-    eval += development(board);
-    eval += rook_placement(board);
-    eval += center_control(board);
-    eval += key_center_squares_control(board);
-    eval += evaluatePieceActivity(board);
-    eval += psqt_eval(board);
-    board.makeNullMove();
-    // Evaluate positional aspects
-    eval -= evaluateKingSafety(board);
-    eval -= evaluatePawnStructure(board);
-    eval -= evaluatePieces(board);
-    eval -= evaluateTactics(board);
-    eval -= piece_activity(board);
-    eval -= development(board);
-    eval -= rook_placement(board);
-    eval -= center_control(board);
-    eval -= key_center_squares_control(board);
-    eval -= evaluatePieceActivity(board);
-    eval -= psqt_eval(board);
-    board.unmakeNullMove();
-    evaltt.store(hash, chess::Move(), eval, 0, TTFlag::EXACT);
-    return eval;
-}
-// Use `const chess::Position&` to avoid copies
-int evaluatePawnStructure(const chess::Position& board) {
-    chess::Position b=board;
-    return -(isolated(board) + dblisolated(board) + weaks(board) + blockage(board) +
-             holes(board) + underpromote(b) + weakness(board) + evaluatePawnRams(board)) +
-           (pawnIslands(board) + pawnRace(board) + pawnShield(board) + pawnStorm(board) +
-            pawnLevers(board) + outpost(board) + evaluateUnfreePawns(board) + evaluateOpenPawns(board));
-}
-
-// Use `const chess::Position&` to avoid copies
-int evaluatePieces(const chess::Position& board) {
-    return -(evaluateBadBishops(board) + evaluateTrappedPieces(board) + evaluateKnightForks(board)) +
-           (evaluateFianchetto(board) + evaluateRooksOnFiles(board));
+int eval(const chess::Position &pos)
+{
+    int p = phase(pos);
+    int eg = end_game_evaluation(pos);
+    eg = eg * scale_factor(pos, eg) / 64;
+    return ((((middle_game_evaluation(pos) * p + eg * (128 - p)) >> 7) & ~15) + tempo(pos)) * (100 - rule50(pos)) / 100;
 }
