@@ -218,5 +218,10 @@ namespace chess
 #define MAX_SCORE_CP 31000
 #define MATE(i) MAX_MATE-i
 #define MATE_DISTANCE(i) (i - MAX_MATE)
-int eval(chess::Position &board);
+int16_t eval(const chess::Position &board);
+inline int16_t eval(chess::Position &board) {
+    return eval(static_cast<const chess::Position&>(board));
+}
 constexpr int16_t ASPIRATION_DELTA = 30;
+int16_t piece_value(chess::PieceType p);
+int16_t passed(const chess::Position &pos);

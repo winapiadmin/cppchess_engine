@@ -1,730 +1,576 @@
 #include "eval.h"
-// Utilities
+#define Evaluation [[nodiscard]]
+#define Middlegame Evaluation
+#define Endgame Evaluation
+#define AllPhases Middlegame Endgame
+// 1. Weights, in case of tuning (centipawns)
+// 1.1. Material weights
+constexpr int16_t PawnValue = 100,
+                  KnightValue = 325,
+                  BishopValue = 350,
+                  RookValue = 500,
+                  QueenValue = 900;
+// 1.2. Pawn structure
+constexpr int16_t Doubled = -100,
+                  Isolated = -80,
+                  Backward = -100,
+                  wpassed = 100,
+                  cpassed = 50,
+                  Island = -30,
+                  hole = -50;
+// 1.3. Mobility
 
-// Function to flip a FEN string
-std::string flipFEN(const std::string &fen)
+// Mobility weights per piece type
+constexpr int MOBILITY_WEIGHTS[] = {
+    0, // EMPTY / None
+    1, // PAWN (often ignored or handled separately)
+    4, // KNIGHT
+    4, // BISHOP
+    6, // ROOK
+    8, // QUEEN
+    0  // KING (usually ignored)
+};
+// 1.3. King safety
+constexpr int16_t pawnShield = 20,
+                  pawnStorm = 12,
+                  kingNearFile = 30;
+// 1.4. Space
+constexpr int16_t Space = 10;
+// 1.5. Tempo
+constexpr int16_t Tempo = 28;
+// 2. Evaluation functions
+// 2.1. Phase
+Evaluation double phase(const chess::Position &pos)
 {
-    // Split the FEN string into its components
-    size_t first_space = fen.find(' ');
-    std::string piece_placement = fen.substr(0, first_space);
-    std::string remaining = fen.substr(first_space + 1);
+    constexpr int KnightPhase = 1;
+    constexpr int BishopPhase = 1;
+    constexpr int RookPhase = 2;
+    constexpr int QueenPhase = 4;
+    constexpr int TotalPhase = KnightPhase * 4 + BishopPhase * 4 + RookPhase * 4 + QueenPhase * 2;
 
-    // Reverse the piece placement
-    std::string flipped;
-    for (auto it = piece_placement.rbegin(); it != piece_placement.rend(); ++it)
+    int phase =
+        (pos.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE).count() +
+         pos.pieces(chess::PieceType::KNIGHT, chess::Color::BLACK).count()) *
+            KnightPhase +
+        (pos.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() +
+         pos.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).count()) *
+            BishopPhase +
+        (pos.pieces(chess::PieceType::ROOK, chess::Color::WHITE).count() +
+         pos.pieces(chess::PieceType::ROOK, chess::Color::BLACK).count()) *
+            RookPhase +
+        (pos.pieces(chess::PieceType::QUEEN, chess::Color::WHITE).count() +
+         pos.pieces(chess::PieceType::QUEEN, chess::Color::BLACK).count()) *
+            QueenPhase;
+
+    return double(phase * 256 + TotalPhase / 2) / TotalPhase;
+}
+// 2.2. Material (one-line) (all phases)
+AllPhases inline int16_t material(const chess::Position &pos)
+{
+    return (pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE).count() -
+            pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK).count()) *
+               PawnValue +
+           (pos.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE).count() -
+            pos.pieces(chess::PieceType::KNIGHT, chess::Color::BLACK).count()) *
+               KnightValue +
+           (pos.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() -
+            pos.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).count()) *
+               BishopValue +
+           (pos.pieces(chess::PieceType::ROOK, chess::Color::WHITE).count() -
+            pos.pieces(chess::PieceType::ROOK, chess::Color::BLACK).count()) *
+               RookValue +
+           (pos.pieces(chess::PieceType::QUEEN, chess::Color::WHITE).count() -
+            pos.pieces(chess::PieceType::QUEEN, chess::Color::BLACK).count()) *
+               QueenValue;
+}
+// 2.3. Pawn structure
+// 2.3.1. Doubled pawns
+Middlegame int16_t doubled(const chess::Position &pos)
+{
+    int16_t score = 0;
+    chess::Bitboard P = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE),
+                    p = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
+    // We use bitwise tricks to avoid conditionals
+    for (int i = 0; i < 8; ++i)
     {
-        if (std::isdigit(*it))
+        chess::Bitboard white = P & chess::attacks::MASK_FILE[i],
+                        black = p & chess::attacks::MASK_FILE[i];
+        int count = white.count() - black.count();
+        if (count > 1)
+            score += count;
+    }
+    return score * Doubled;
+}
+// 2.3.2. Isolated pawns
+Middlegame int16_t isolated(const chess::Position &pos)
+{
+    chess::Bitboard P = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE),
+                    p = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK),
+                    adjP = (P << 1 | P >> 1) & 0x6F6F6F6F6F6F6F6F,
+                    adjp = (p << 1 | p >> 1) & 0x6F6F6F6F6F6F6F6F,
+                    Pi = P & ~adjP,
+                    pi = p & ~adjp;
+    return (Pi.count() - pi.count()) * Isolated;
+}
+// 2.3.3. Backward (https://www.chessprogramming.org/Backward_Pawns_(Bitboards))
+Middlegame inline int16_t backward(const chess::Position &pos)
+{
+    chess::Bitboard P = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE),
+                    p = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK),
+                    wstop = P << 8,
+                    bstop = p << 8,
+                    wAttacks = chess::attacks::pawnLeftAttacks<chess::Color::WHITE>(P) |
+                               chess::attacks::pawnRightAttacks<chess::Color::WHITE>(P),
+                    bAttacks = chess::attacks::pawnLeftAttacks<chess::Color::BLACK>(p) |
+                               chess::attacks::pawnRightAttacks<chess::Color::BLACK>(p),
+                    wback = (wstop & bAttacks & ~wAttacks) >> 8,
+                    bback = (bstop & wAttacks & ~bAttacks) >> 8;
+    return -(wback.count() - bback.count()) * Backward;
+}
+// 2.3.4. Passed pawns (including candidate ones) (considered in both middlegame and endgame)
+
+AllPhases int16_t passed(const chess::Position &pos)
+{
+    chess::Bitboard whitePawns = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE);
+    chess::Bitboard blackPawns = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
+
+    auto compute_score = [](chess::Bitboard P, chess::Bitboard p, bool isWhite) -> int16_t
+    {
+        chess::Bitboard mask = p;
+        mask |= (p << 1 | p >> 1) & 0x6F6F6F6F6F6F6F6F;
+
+        if (isWhite)
         {
-            flipped += *it;
-        }
-        else if (*it == '/')
-        {
-            flipped += '/';
+            mask |= (mask << 8);
+            mask |= (mask << 16);
+            mask |= (mask << 32);
         }
         else
         {
-            flipped += std::islower(*it) ? std::toupper(*it) : std::tolower(*it);
-        }
-    }
-    std::reverse(flipped.begin(), flipped.end());
-
-    // Toggle the side to move
-    size_t second_space = remaining.find(' ');
-    char side_to_move = remaining[0] == 'w' ? 'b' : 'w';
-    std::string rest = remaining.substr(second_space);
-
-    // Adjust castling rights
-    size_t third_space = rest.find(' ');
-    std::string castling = rest.substr(1, third_space - 1);
-    for (char &c : castling)
-    {
-        if (c == 'K')
-            c = 'k';
-        else if (c == 'Q')
-            c = 'q';
-        else if (c == 'k')
-            c = 'K';
-        else if (c == 'q')
-            c = 'Q';
-    }
-    if (castling.empty())
-        castling = "-";
-
-    // Adjust en passant square
-    size_t fourth_space = rest.find(' ', third_space + 1);
-    std::string en_passant = rest.substr(third_space + 1, fourth_space - third_space - 1);
-    if (en_passant != "-")
-    {
-        en_passant[1] = en_passant[1] == '3' ? '6' : en_passant[1] == '6' ? '3'
-                                                                          : en_passant[1];
-    }
-
-    // Combine all parts to form the flipped FEN
-    return flipped + " " + side_to_move + " " + castling + " " + en_passant + rest.substr(fourth_space);
-}
-chess::Position colorflip(const chess::Position &Position)
-{
-    return chess::Position(flipFEN(Position.getFen()));
-}
-typedef int (*func_1)(const chess::Position &, const chess::Square &);
-typedef int (*func_2)(const chess::Position &, const chess::Square &, int);
-int sum(const chess::Position &pos, func_1 func)
-{
-    int total = 0;
-    for (int x = 0; x < 64; ++x)
-            total += func(pos, x);
-    return total;
-}
-int sum(const chess::Position &pos, func_2 func, int param)
-{
-    int total = 0;
-    for (int x = 0; x < 64; ++x)
-            total += func(pos, x, param);
-    return total;
-}
-
-// Main evaluation
-int piece_value_bonus(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ, int mg = 0)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, piece_value_bonus, 0);
-    static constexpr std::array<int, 5> mg_values = {124, 781, 825, 1276, 2538};
-    static constexpr std::array<int, 5> eg_values = {206, 854, 915, 1380, 2682};
-    chess::PieceType i = pos.at(square).type();
-    return (i != chess::PieceType::NONE) ? (mg ? mg_values[i] : eg_values[i]) : 0;
-}
-inline int piece_value_mg(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, piece_value_mg);
-    return piece_value_bonus(pos, square, true);
-}
-
-int psqt_bonus(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ, int mg = 0)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, psqt_bonus, mg);
-
-    static const std::vector<std::vector<std::vector<int>>> bonus[2] = {
-        {// Endgame (mg == 0)
-         {{-96, -65, -49, -21}, {-67, -54, -18, 8}, {-40, -27, -8, 29}, {-35, -2, 13, 28}, {-45, -16, 9, 39}, {-51, -44, -16, 17}, {-69, -50, -51, 12}, {-100, -88, -56, -17}},
-         {{-57, -30, -37, -12}, {-37, -13, -17, 1}, {-16, -1, -2, 10}, {-20, -6, 0, 17}, {-17, -1, -14, 15}, {-30, 6, 4, 6}, {-31, -20, -1, 1}, {-46, -42, -37, -24}},
-         {{-9, -13, -10, -9}, {-12, -9, -1, -2}, {6, -8, -2, -6}, {-6, 1, -9, 7}, {-5, 8, 7, -6}, {6, 1, -7, 10}, {4, 5, 20, -5}, {18, 0, 19, 13}},
-         {{-69, -57, -47, -26}, {-55, -31, -22, -4}, {-39, -18, -9, 3}, {-23, -3, 13, 24}, {-29, -6, 9, 21}, {-38, -18, -12, 1}, {-50, -27, -24, -8}, {-75, -52, -43, -36}},
-         {{1, 45, 85, 76}, {53, 100, 133, 135}, {88, 130, 169, 175}, {103, 156, 172, 172}, {96, 166, 199, 199}, {92, 172, 184, 191}, {47, 121, 116, 131}, {11, 59, 73, 78}}},
-        {// Middlegame (mg == 1)
-         {{-175, -92, -74, -73}, {-77, -41, -27, -15}, {-61, -17, 6, 12}, {-35, 8, 40, 49}, {-34, 13, 44, 51}, {-9, 22, 58, 53}, {-67, -27, 4, 37}, {-201, -83, -56, -26}},
-         {{-53, -5, -8, -23}, {-15, 8, 19, 4}, {-7, 21, -5, 17}, {-5, 11, 25, 39}, {-12, 29, 22, 31}, {-16, 6, 1, 11}, {-17, -14, 5, 0}, {-48, 1, -14, -23}},
-         {{-31, -20, -14, -5}, {-21, -13, -8, 6}, {-25, -11, -1, 3}, {-13, -5, -4, -6}, {-27, -15, -4, 3}, {-22, -2, 6, 12}, {-2, 12, 16, 18}, {-17, -19, -1, 9}},
-         {{3, -5, -5, 4}, {-3, 5, 8, 12}, {-3, 6, 13, 7}, {4, 5, 9, 8}, {0, 14, 12, 5}, {-4, 10, 6, 8}, {-5, 6, 10, 8}, {-2, -2, 1, -2}},
-         {{271, 327, 271, 198}, {278, 303, 234, 179}, {195, 258, 169, 120}, {164, 190, 138, 98}, {154, 179, 105, 70}, {123, 145, 81, 31}, {88, 120, 65, 33}, {59, 89, 45, -1}}}};
-
-    static const std::vector<std::vector<int>> pbonus[2] = {
-        {// Endgame (mg == 0)
-         {0, 0, 0, 0, 0, 0, 0, 0},
-         {-10, -6, 10, 0, 14, 7, -5, -19},
-         {-10, -10, -10, 4, 4, 3, -6, -4},
-         {6, -2, -8, -4, -13, -12, -10, -9},
-         {10, 5, 4, -5, -5, -5, 14, 9},
-         {28, 20, 21, 28, 30, 7, 6, 13},
-         {0, -11, 12, 21, 25, 19, 4, 7},
-         {0, 0, 0, 0, 0, 0, 0, 0}},
-        {// Middlegame (mg == 1)
-         {0, 0, 0, 0, 0, 0, 0, 0},
-         {3, 3, 10, 19, 16, 19, 7, -5},
-         {-9, -15, 11, 15, 32, 22, 5, -22},
-         {-4, -23, 6, 20, 40, 17, 4, -8},
-         {13, 0, -13, 1, 11, -2, -13, 5},
-         {5, -12, -7, 22, -8, -5, -15, -8},
-         {-7, 7, -3, -13, 5, -16, 10, -8},
-         {0, 0, 0, 0, 0, 0, 0, 0}}};
-
-    chess::PieceType p = pos.at(square).type();
-    if (p == chess::PieceType::NONE)
-        return 0;
-    int index = p;
-    return (index == 0) ? pbonus[mg][7 - square.rank()][square.file()] : bonus[mg][index - 1][7 - square.rank()][std::min(square.file(), chess::File(7 - square.file()))];
-}
-inline int psqt_mg(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, psqt_mg);
-    return psqt_bonus(pos, square, true);
-}
-int imbalance(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, imbalance);
-
-    static const std::vector<std::vector<int>> qo = {
-        {0}, {40, 38}, {32, 255, -62}, {0, 104, 4, 0}, {-26, -2, 47, 105, -208}, {-189, 24, 117, 133, -134, -6}};
-    static const std::vector<std::vector<int>> qt = {
-        {0}, {36, 0}, {9, 63, 0}, {59, 65, 42, 0}, {46, 39, 24, -24, 0}, {97, 100, -42, 137, 268, 0}};
-
-    const std::string piece_map = ".PNBRQ.pnbrq";
-    int j = piece_map.find(pos.at(square));
-
-    if (j < 0 || j > 5)
-        return 0; // Ignore out-of-bounds and kings
-
-    int bishop[2] = {0, 0}, v = 0;
-
-    for (chess::Square s; s.index() < 64; ++s)
-    {
-        int i = piece_map.find(pos.at(s));
-
-        if (i == std::string::npos)
-            continue; // Ignore empty squares
-
-        if (i == 9)
-            bishop[0]++;
-        if (i == 3)
-            bishop[1]++;
-        if (i % 6 > j)
-            continue;
-
-        v += (i > 5) ? qt[j][i - 6] : qo[j][i];
-    }
-
-    if (bishop[0] > 1)
-        v += qt[j][0];
-    if (bishop[1] > 1)
-        v += qo[j][0];
-
-    return v;
-}
-inline int bishop_pair(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (pos.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count() < 2)
-        return 0;
-    if (square == chess::Square::underlying::NO_SQ)
-        return 1438;
-    return pos.at(square) == chess::Piece::WHITEBISHOP;
-}
-inline int imbalance_total(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    int v = 0;
-    v += imbalance(pos) - imbalance(colorflip(pos));
-    v += bishop_pair(pos) - bishop_pair(colorflip(pos));
-    return v >> 4;
-}
-int isolated(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, isolated);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-    int file = square.file();
-    chess::Bitboard left(chess::File(file+1)),
-	    	    right(chess::File(file-1)),
-		    pawns=pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE),
-		    adj=left|right;
-    if (pawns&adj)return 0;
-    return 1;
-}
-int doubled_isolated(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, doubled_isolated);
-
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-
-    if (isolated(pos, square))
-    {
-        int obe = 0, eop = 0, ene = 0;
-        int file = square.file();
-        int rank = square.rank();
-
-        for (int y = 0; y < 8; y++)
-        {
-            if (y > rank && pos.at(chess::Square(chess::File(file), y)) == chess::Piece::WHITEPAWN)
-                obe++;
-            if (y < rank && pos.at(chess::Square(chess::File(file), y)) == chess::Piece::BLACKPAWN)
-                eop++;
-            if ((file > 0 && pos.at(chess::Square(chess::File(file - 1), y)) == chess::Piece::BLACKPAWN) ||
-                (file < 7 && pos.at(chess::Square(chess::File(file + 1), y)) == chess::Piece::BLACKPAWN))
-                ene++;
+            mask |= (mask >> 8);
+            mask |= (mask >> 16);
+            mask |= (mask >> 32);
         }
 
-        if (obe > 0 && ene == 0 && eop > 0)
-            return 1;
-    }
+        chess::Bitboard passed = P & ~mask;
+        chess::Bitboard candidate = P & mask;
 
-    return 0;
+        return wpassed * passed.count() + cpassed * candidate.count();
+    };
+
+    int16_t whiteScore = compute_score(whitePawns, blackPawns, true);
+    int16_t blackScore = compute_score(blackPawns, whitePawns, false);
+
+    return whiteScore - blackScore;
 }
-int backward(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, backward);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-    int file = square.file();
-    int rank = square.rank();
 
-    for (int y = rank; y < 8; y++)
+
+// 2.3.5. Pawn islands
+// Function to evaluate the difference in pawn islands between white and black
+Middlegame int16_t islands(const chess::Position &pos)
+{
+    constexpr chess::Bitboard NFILE_A = ~chess::attacks::MASK_FILE[0],
+                              NRANK_8 = ~chess::attacks::MASK_RANK[7],
+                              NFILE_H = ~chess::attacks::MASK_FILE[7],
+                              NRANK_1 = ~chess::attacks::MASK_RANK[0];
+    // Get the pawns of both white and black
+    chess::Bitboard whitePawns = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE);
+    chess::Bitboard blackPawns = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
+
+    int16_t whitePenalty = 0;
+    int16_t blackPenalty = 0;
+
+    chess::Bitboard visitedWhite = 0; // Bitboard to track white pawns we've already processed
+    chess::Bitboard visitedBlack = 0; // Bitboard to track black pawns we've already processed
+
+    int whitePawnIslands = 0;
+    int blackPawnIslands = 0;
+
+    // Calculate pawn islands for white pawns
+    while (whitePawns)
     {
-        if ((file && pos.at(chess::Square(chess::File(file - 1), y)) == chess::Piece::WHITEPAWN) ||
-            ((file & 0xfffffff8) && pos.at(chess::Square(chess::File(file + 1), y)) == chess::Piece::WHITEPAWN))
-            return 0;
-    }
+        chess::Bitboard currentPawn = whitePawns.pop();
 
-    return (file && (rank & 0xfffffffe) && pos.at(square - 17) == chess::Piece::BLACKPAWN) ||
-           ((file & 0xfffffff8) && (rank & 0xfffffffe) && pos.at(square - 15) == chess::Piece::BLACKPAWN) ||
-           (rank && pos.at(square - 8) == chess::Piece::BLACKPAWN);
-}
-inline int supported(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, supported);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-    return (pos.at(square + 7) == chess::Piece::WHITEPAWN) + (pos.at(square + 9) == chess::Piece::WHITEPAWN);
-}
-inline int phalanx(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, phalanx);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-    if (pos.at(square - 1) == chess::Piece::WHITEPAWN || pos.at(square + 1) == chess::Piece::WHITEPAWN)
-        return 1;
-    return 0;
-}
-inline int connected(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, connected);
-    return supported(pos,square)||phalanx(pos, square);
-}
-int opposed(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, opposed);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-
-    chess::Bitboard bb(square.rank()),
-	    	    bp=pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
-    return (bb&bp)!=0;
-}
-
-inline int weak_unopposed_pawn(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, weak_unopposed_pawn);
-    return (!opposed(pos, square)) && (isolated(pos, square) || backward(pos, square));
-}
-int connected_bonus(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, connected_bonus);
-    if (!connected(pos, square))
-        return 0;
-    std::vector<int> seed = {0, 7, 8, 12, 29, 48, 86};
-    int op = opposed(pos, square), ph = phalanx(pos, square), su = supported(pos, square), bl = pos.at(square - 1) == chess::Piece::WHITEPAWN, r = square.rank();
-    if (r < 2 || r > 7)
-        return 0;
-    return seed[r - 1] * (2 + ph - op) + 21 * su;
-}
-int doubled(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, doubled);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-
-    if (pos.at(square + 8) != chess::Piece::WHITEPAWN ||
-        pos.at(square + 15) == chess::Piece::WHITEPAWN ||
-        pos.at(square + 17) == chess::Piece::WHITEPAWN)
-        return 0;
-    return 1;
-}
-int blocked(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, blocked);
-    if (pos.at(square) != chess::Piece::WHITEPAWN)
-        return 0;
-
-    int rank = square.rank();
-    if (rank != 2 && rank != 3)
-        return 0;
-
-    if (pos.at(square - 8) != chess::Piece::BLACKPAWN)
-        return 0;
-
-    return 4 - rank;
-}
-int pawn_attacks_span(const chess::Position &pos, const chess::Square &square)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, pawn_attacks_span);
-
-    chess::Position pos2 = colorflip(pos); // Assuming `colorflip` creates a Position with flipped colors
-    for (int y = 0; y < square.rank(); y++)
-    {
-	chess::Rank br=chess::Rank::back_rank(y, chess::Color::WHITE);
-	chess::Square w=chess::Square(square.file(), y+1),
-		      w2=chess::Square(square.file(), y),
-		      w3=chess::Square(square.file(), br);
-	bool p1=(y==square.rank()-1);
-	
-        if (pos.at(w2 - 1) == chess::Piece::BLACKPAWN &&
-            (p1 ||
-             (pos.at(w - 1) != chess::Piece::WHITEPAWN &&
-              !backward(pos2, w3 - 1))))
+        // If this pawn hasn't been visited, it's a new island
+        if (!(visitedWhite & currentPawn))
         {
-            return 1;
-        }
+            whitePawnIslands++;
 
-        if (pos.at(w2 + 1) == chess::Piece::BLACKPAWN &&
-	   (p1 ||
-             (pos.at(w+1) != chess::Piece::WHITEPAWN &&
-              !backward(pos2, w3 + 1))))
-        {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-int outpost_square(const chess::Position &pos, const chess::Square &square)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, outpost_square);
-    if (square.rank() != chess::Rank::RANK_5)
-        return 0;
-
-    if (pos.at(square + 15) != chess::Piece::WHITEPAWN &&
-        pos.at(square + 17) != chess::Piece::WHITEPAWN)
-        return 0;
-
-    if (pawn_attacks_span(pos, square))
-        return 0;
-
-    return 1;
-}
-
-inline int pawns_mg(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, pawns_mg);
-    int v = 0;
-    if (doubled_isolated(pos, square))
-        v -= 11;
-    else if (isolated(pos, square))
-        v -= 5;
-    else if (backward(pos, square))
-        v -= 9;
-    v -= doubled(pos, square) * 11;
-    v += connected(pos, square) ? connected_bonus(pos, square) : 0;
-    v -= 13 * weak_unopposed_pawn(pos, square);
-    v += std::vector<int>{0, -11, -3}[blocked(pos, square)];
-    return v;
-}
-int reachable_outpost(const chess::Position &pos, chess::Square square)
-{
-    chess::Piece piece = pos.at(square);
-
-    int v = 0;
-    bool isKnight = (piece == chess::Piece::WHITEKNIGHT);
-
-    for (int x = 0; x < 8; x++)
-    {
-        for (int y = 2; y < 5; y++)
-        {
-            chess::Square target = chess::Square(chess::File(x), y);
-            if (pos.at(target) != chess::Piece::NONE)
-                continue;
-
-            chess::Bitboard attacks = isKnight
-                                   ? chess::attacks::knight(target)
-                                   : chess::attacks::bishop(target, pos.occ());
-
-            if ((attacks & (1ULL << square.index())) && outpost_square(pos, target))
+            // Perform flood fill to mark the entire connected component of pawns
+            chess::Bitboard stack = currentPawn;
+            while (stack)
             {
-                v = std::max(v, (pos.at(target + 15) == chess::Piece::WHITEPAWN ||
-                                 pos.at(target + 17) == chess::Piece::WHITEPAWN) +
-                                    1);
+                chess::Bitboard current = stack.pop();
+                visitedWhite |= current; // Mark as visited
+
+                // Check for connected pawns in adjacent squares (left, right, up, down)
+                if (current & NFILE_A)
+                    stack |= current << 1; // Left
+                if (current & NFILE_H)
+                    stack |= current >> 1; // Right
+                if (current & NRANK_8)
+                    stack |= current << 8; // Up (white) or Down (black)
+                if (current & NRANK_1)
+                    stack |= current >> 8; // Down (white) or Up (black)
             }
         }
     }
-    return v;
-}
 
-int outpost_total(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, outpost_total);
-
-    chess::Piece piece = pos.at(square);
-    if (piece != chess::Piece::WHITEKNIGHT && piece != chess::Piece::WHITEBISHOP)
-        return 0;
-
-    bool knight = (piece == chess::Piece::WHITEKNIGHT);
-    if (outpost_square(pos, square))
+    // Calculate pawn islands for black pawns
+    while (blackPawns)
     {
-        return knight || reachable_outpost(pos, square);
-    }
+        chess::Bitboard currentPawn = blackPawns.pop();
 
-    if (knight && square.file() < chess::File::FILE_B || square.file() > chess::File::FILE_G)
-    {
-        bool enemy_attacks = false;
-        int same_side_control = 0;
-        chess::Bitboard bb = pos.us(chess::Color::BLACK);
-        while (bb)
+        // If this pawn hasn't been visited, it's a new island
+        if (!(visitedBlack & currentPawn))
         {
-            chess::Square sq = bb.pop();
-            if ((std::abs(square.file() - sq.file()) == 2 && std::abs(square.rank() - sq.rank()) == 1) ||
-                (std::abs(square.file() - sq.file()) == 1 && std::abs(square.rank() - sq.rank()) == 2))
-            {
-                enemy_attacks = true;
-            }
+            blackPawnIslands++;
 
-            if ((sq.file() < chess::File::FILE_E && square.file() < chess::File::FILE_E) ||
-                (sq.file() >= chess::File::FILE_E && square.file() >= chess::File::FILE_E))
+            // Perform flood fill to mark the entire connected component of pawns
+            chess::Bitboard stack = currentPawn;
+            while (stack)
             {
-                same_side_control++;
+                int current = stack.pop();
+                visitedBlack |= current; // Mark as visited
+
+                // Check for connected pawns in adjacent squares (left, right, up, down)
+                if (current & NFILE_A)
+                    stack |= current << 1; // Left
+                if (current & NFILE_H)
+                    stack |= current >> 1; // Right
+                if (current & NRANK_8)
+                    stack |= current << 8; // Up (white) or Down (black)
+                if (current & NRANK_1)
+                    stack |= current >> 8; // Down (white) or Up (black)
             }
         }
-
-        if (!enemy_attacks && same_side_control <= 1)
-            return 2;
     }
 
-    return knight ? 4 : 3;
-}
-inline int minor_behind_pawn(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, minor_behind_pawn);
-    chess::Piece piece = pos.at(square);
-    if (piece != chess::Piece::WHITEKNIGHT && piece != chess::Piece::WHITEBISHOP)
-        return 0;
-    if (pos.at(square - 8).type() != chess::PieceType::PAWN)
-        return 0;
-    return 1;
-}
-int bishop_pawns(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, bishop_pawns);
-    if (pos.at(square) != chess::Piece::WHITEBISHOP)
-        return 0;
-    int x = square.file();
+    // Penalty per pawn island
+    whitePenalty = whitePawnIslands * Island;
+    blackPenalty = blackPawnIslands * Island;
 
-    int c = (x + (int)square.rank()) & 1, v = 0, _blocked = 0;
-    chess::Bitboard bb = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE);
-    while (bb)
+    // Return the difference (white penalty - black penalty)
+    return whitePenalty - blackPenalty;
+}
+// 2.3.6. Holes
+Middlegame int16_t holes(const chess::Position &pos)
+{
+    constexpr chess::Bitboard FILE_A_MASK = ~chess::attacks::MASK_FILE[0];
+    constexpr chess::Bitboard FILE_H_MASK = ~chess::attacks::MASK_FILE[7];
+
+    chess::Bitboard whitePawns = pos.pieces(chess::PieceType::PAWN, chess::Color::WHITE);
+    chess::Bitboard blackPawns = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
+
+    // Defensive coverage for white
+    chess::Bitboard whiteDef = ((whitePawns << 8) | (whitePawns >> 8)) |
+                               ((whitePawns << 1) & FILE_A_MASK) |
+                               ((whitePawns >> 1) & FILE_H_MASK);
+
+    // Defensive coverage for black
+    chess::Bitboard blackDef = ((blackPawns << 8) | (blackPawns >> 8)) |
+                               ((blackPawns << 1) & FILE_A_MASK) |
+                               ((blackPawns >> 1) & FILE_H_MASK);
+
+    // Mask out actual pawn presence
+    chess::Bitboard whiteHoles = ~(whitePawns | whiteDef);
+    chess::Bitboard blackHoles = ~(blackPawns | blackDef);
+
+    // Restrict to middle game ranks (ranks 3–6) where holes matter most
+    constexpr chess::Bitboard MID_RANKS = 0x00FFFF0000ULL; // Ranks 3–6
+    whiteHoles &= MID_RANKS;
+    blackHoles &= MID_RANKS;
+
+    // Apply penalty for each hole
+    int whitePenalty = whiteHoles.count();
+    int blackPenalty = blackHoles.count();
+
+    return (whitePenalty - blackPenalty)*hole;
+}
+Middlegame int pawn(const chess::Position &pos)
+{
+    return doubled(pos) - isolated(pos) - backward(pos) - islands(pos) - holes(pos);
+}
+// 2.4. Mobility
+
+AllPhases int16_t mobility(const chess::Position &board)
+{
+    using namespace chess;
+    int mobilityScore = 0;
+
+    Bitboard occupied = board.occ();
+
+    const Color sides[2] = {Color::WHITE, Color::BLACK};
+
+    for (Color side : sides)
     {
-        chess::Square sq(bb.pop());
-        chess::Piece piece = pos.at(sq);
-        if (c == (int(sq.file()) + int(sq.rank())) & 1)
-            v++;
-        if (x > 1 && x < 6 && pos.at(sq - 8) != chess::Piece::NONE)
-            _blocked++;
+        Bitboard us = board.us(side);
+
+        for (PieceType pt : {PieceType::KNIGHT, PieceType::BISHOP, PieceType::ROOK, PieceType::QUEEN})
+        {
+            Bitboard pieces = board.pieces(pt) & us;
+            while (pieces)
+            {
+                Square sq = pieces.pop();
+
+                Bitboard attacks = 0;
+                switch (pt)
+                {
+                case (int)PieceType::KNIGHT:
+                    attacks = chess::attacks::knight(sq);
+                    break;
+                case (int)PieceType::BISHOP:
+                    attacks = chess::attacks::bishop(sq, occupied);
+                    break;
+                case (int)PieceType::ROOK:
+                    attacks = chess::attacks::rook(sq, occupied);
+                    break;
+                case (int)PieceType::QUEEN:
+                    attacks = chess::attacks::queen(sq, occupied);
+                    break;
+                default:
+                    break;
+                }
+
+                // Remove friendly pieces from attack mask
+                attacks &= ~us;
+
+                int attackCount = attacks.count();
+                int weighted = MOBILITY_WEIGHTS[static_cast<int>(pt)] * attackCount;
+
+                mobilityScore += (side == Color::WHITE) ? weighted : -weighted;
+            }
+        }
     }
-    return v * (_blocked + (bool)(chess::attacks::pawn(pos.at(square).color(), square).count()));
+
+    return mobilityScore;
 }
-inline int bishop_xray_pawns(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
+
+// 2.5. King safety
+// 2.5.1. Pawn shield
+Middlegame int16_t pawn_shield(const chess::Position &board)
 {
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, bishop_xray_pawns);
-    if (pos.at(square) != chess::Piece::WHITEBISHOP)
+    constexpr chess::Bitboard SHIELD = 0x00ff00000000ff00ULL;  // rank 2 and 7 for pawn shield
+    constexpr chess::Bitboard SHIELD2 = 0x0000ff0000ff0000ULL; // rank 3 and 6 for isolated pawns
+    chess::Bitboard wkingAttacksBB = chess::attacks::king(board.kingSq(chess::Color::WHITE)),
+                    bKingAttacksBB = chess::attacks::king(board.kingSq(chess::Color::BLACK));
+    int wshieldCount1 = (wkingAttacksBB & SHIELD).count(),
+        wshieldCount2 = (wkingAttacksBB & SHIELD2).count();
+    int bshieldCount1 = (bKingAttacksBB & SHIELD).count(),
+        bshieldCount2 = (bKingAttacksBB & SHIELD2).count();
+    int w = !wshieldCount1 * wshieldCount2 + wshieldCount1,
+        b = !bshieldCount1 * bshieldCount2 + bshieldCount1;
+    return (w - b) * pawnShield;
+}
+// 2.5.2. Pawn storm (simple)
+// Only consider opponent's pawn near the king
+Middlegame int16_t pawn_storm(const chess::Position &board)
+{
+    chess::Square whiteKing = board.kingSq(chess::Color::WHITE);
+    chess::Square blackKing = board.kingSq(chess::Color::BLACK);
+
+    chess::Bitboard whitePawns = board.pieces(chess::PieceType::PAWN, chess::Color::WHITE);
+    chess::Bitboard blackPawns = board.pieces(chess::PieceType::PAWN, chess::Color::BLACK);
+
+    constexpr chess::Bitboard KINGSIDE_FLANK = chess::attacks::MASK_FILE[4] | chess::attacks::MASK_FILE[5] | chess::attacks::MASK_FILE[6] | chess::attacks::MASK_FILE[7];
+    constexpr chess::Bitboard QUEENSIDE_FLANK = chess::attacks::MASK_FILE[0] | chess::attacks::MASK_FILE[1] | chess::attacks::MASK_FILE[2] | chess::attacks::MASK_FILE[3];
+    constexpr chess::Bitboard stormZone = chess::attacks::MASK_RANK[3] | chess::attacks::MASK_RANK[4];
+
+    chess::Bitboard whiteFlankMask = (whiteKing.file() >= chess::File::FILE_E) ? KINGSIDE_FLANK : QUEENSIDE_FLANK;
+    chess::Bitboard blackFlankMask = (blackKing.file() >= chess::File::FILE_E) ? KINGSIDE_FLANK : QUEENSIDE_FLANK;
+
+    int whiteStorm = (blackPawns & stormZone & whiteFlankMask).count();
+    int blackStorm = (whitePawns & stormZone & blackFlankMask).count();
+
+    // Positive score if Black storms White, negative if White storms Black (from White POV)
+    return pawnStorm * (whiteStorm - blackStorm);
+}
+// 2.5.3. King near open/semi-open files
+Middlegame int16_t king_near_file(const chess::Position &board)
+{
+    chess::Square whiteKing = board.kingSq(chess::Color::WHITE);
+    chess::Square blackKing = board.kingSq(chess::Color::BLACK);
+
+    constexpr chess::Bitboard KINGSIDE_FLANK = chess::attacks::MASK_FILE[4] | chess::attacks::MASK_FILE[5] | chess::attacks::MASK_FILE[6] | chess::attacks::MASK_FILE[7];
+    constexpr chess::Bitboard QUEENSIDE_FLANK = chess::attacks::MASK_FILE[0] | chess::attacks::MASK_FILE[1] | chess::attacks::MASK_FILE[2] | chess::attacks::MASK_FILE[3];
+
+    chess::Bitboard whitePawns = board.pieces(chess::PieceType::PAWN, chess::Color::WHITE),
+                    blackPawns = board.pieces(chess::PieceType::PAWN, chess::Color::BLACK),
+                    whiteFlankMask = (whiteKing.file() >= chess::File::FILE_E) ? KINGSIDE_FLANK : QUEENSIDE_FLANK,
+                    blackFlankMask = (blackKing.file() >= chess::File::FILE_E) ? KINGSIDE_FLANK : QUEENSIDE_FLANK,
+                    wopens, wsemiopens, wpotential,
+                    bopens, bsemiopens, bpotential;
+    // Phase 1: count open/semi-open files for both
+    for (int file = 0; file < 8; ++file)
+    {
+        chess::Bitboard fileMask = chess::attacks::MASK_FILE[file];
+        if ((whitePawns & fileMask) && (blackPawns & fileMask))
+            bsemiopens |= fileMask;
+        if (!(whitePawns & fileMask) && (blackPawns & fileMask))
+            wsemiopens |= fileMask;
+        if (!(whitePawns & fileMask) && !(blackPawns & fileMask))
+        {
+            wopens |= fileMask;
+            bopens |= fileMask;
+        }
+    }
+    wpotential = wopens | wsemiopens, bpotential = bopens | bsemiopens;
+    return bool(whiteFlankMask & wpotential) * kingNearFile - bool(blackFlankMask & bpotential) * kingNearFile;
+}
+Middlegame int16_t king_safety(const chess::Position &board)
+{
+    return pawn_shield(board) + pawn_storm(board) + king_near_file(board);
+}
+// 2.6. Space
+AllPhases int space(const chess::Position &board)
+{
+    int score = 0;
+
+    // Evaluate space control for both sides
+    for (chess::Color color : {chess::Color::WHITE, chess::Color::BLACK})
+    {
+        chess::Color opponent = ~color;
+        int color_multiplier = (color == chess::Color::WHITE) ? 1 : -1;
+
+        // Space Evaluation: Count controlled squares in the opponent's half
+        chess::Bitboard my_pawns = board.pieces(chess::PieceType::PAWN, color);
+
+        while (my_pawns)
+        {
+            chess::Square sq = my_pawns.pop();
+            chess::Bitboard pawn_attacks = chess::attacks::pawn(color, sq);
+
+            while (pawn_attacks)
+            {
+                chess::Square target = pawn_attacks.pop();
+                // Check if square is in opponent's half
+                bool in_opponent_half = (color == chess::Color::WHITE && target >= 32) ||
+                                        (color == chess::Color::BLACK && target < 32);
+
+                if (in_opponent_half && !board.isAttacked(target, opponent) && !board.at(target))
+                {
+                    score += Space * color_multiplier;
+                }
+            }
+        }
+    }
+
+    return score;
+}
+// 2.7. Tempo (simple) (all phases)
+AllPhases int16_t tempo(const chess::Position &board)
+{
+    return (board.sideToMove() == chess::Color::WHITE) ? Tempo : -Tempo;
+}
+// 2.8. Endgame
+Endgame bool draw(const chess::Position &board)
+{
+    // Precompute piece counts (avoid multiple function calls)
+    int pieceCount[10] = {
+        board.pieces(chess::PieceType::PAWN, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::ROOK, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::QUEEN, chess::Color::WHITE).count(),
+        board.pieces(chess::PieceType::PAWN, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::KNIGHT, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::BISHOP, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::ROOK, chess::Color::BLACK).count(),
+        board.pieces(chess::PieceType::QUEEN, chess::Color::BLACK).count(),
+    };
+
+    // Count total non-pawn pieces
+    int totalNonPawnPieces = 0;
+    for (int i = 1; i < 5; ++i)
+    {
+        totalNonPawnPieces += pieceCount[i] + pieceCount[i + 5];
+    }
+
+    // Total pawns
+    int totalPawns = pieceCount[0] + pieceCount[5];
+
+    // KvK
+    if (totalNonPawnPieces == 0 && totalPawns == 0)
         return 0;
-    int count = 0;
-    chess::Bitboard bb = pos.pieces(chess::PieceType::PAWN, chess::Color::BLACK) & 0x8142241818244281;
-    return bb.count();
-}
-inline int rook_on_queen_file(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, rook_on_queen_file);
-    if (pos.at(square) != chess::Piece::WHITEROOK)
-        return 0;
-    return !pos.pieces(chess::PieceType::QUEEN) & chess::Bitboard(chess::File(square.file())).empty();
-}
 
-int king_ring(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, king_ring);
-
-    int x = static_cast<int>(square.file());
-    int y = static_cast<int>(square.rank());
-
-    // Precompute the white king's position
-    chess::Square whiteKingSq = pos.kingSq(chess::Color::WHITE);
-
-    // Early exit if the white king is within distance 2
-    if (chess::Square::value_distance(square, whiteKingSq) <= 2)
+    // KBvK or KNvK
+    if (totalNonPawnPieces == 1 && totalPawns == 0 &&
+        (pieceCount[1] == 1 || pieceCount[2] == 1 ||
+         pieceCount[6] == 1 || pieceCount[7] == 1))
         return 1;
 
-    // Check if square is defended by black pawns
-    bool leftPawn = (square > 8 && pos.at(square - 17) == chess::Piece::BLACKPAWN);
-    bool rightPawn = ((1 << square.index()) & 0xfcfcfcfcfc7dfc) && pos.at(square - 15) == chess::Piece::BLACKPAWN;
-
-    return leftPawn && rightPawn;
-}
-
-inline int rook_on_king_ring(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, rook_on_king_ring);
-    if (pos.at(square) != chess::Piece::WHITEROOK)
-        return 0;
-    if (pos.inCheck() * (pos.sideToMove() == chess::Color::WHITE ? 1 : -1) > 0)
-        return 0;
-    for (int y = 0; y < 8; y++)
+    // KBBvK with same colored bishops
+    if (totalNonPawnPieces == 2 && totalPawns == 0)
     {
-        if (king_ring(pos, chess::Square(square.file(), y)))
-            return 1;
-    }
-    return 0;
-}
-int bishop_on_king_ring(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ)
-{
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, bishop_on_king_ring);
-    if (pos.at(square) != chess::Piece::WHITEBISHOP||
-        pos.inCheck())
-        return 0;
-    for (int i = 0; i < 4; i++)
-    {
-        chess::File ix = ((i > 1) * 2 - 1) + square.file();
-        chess::Rank iy = ((i % 2 == 0) * 2 - 1) + square.rank();
-        for (int d = 1;
-             d < 8 ||
-             (ix <= chess::File::FILE_H) ||
-             (iy <= chess::Rank::RANK_8);
-             d++, ix = ix + d, iy = iy + d)
+        // Check white bishops on same color
+        if (pieceCount[2] == 2)
         {
-            if (king_ring(pos, chess::Square(ix, iy)))
+            chess::Bitboard bishops = board.pieces(chess::PieceType::BISHOP, chess::Color::WHITE);
+            chess::Square first = bishops.pop();
+            chess::Square second = bishops.pop();
+            if (chess::Square::same_color(first, second))
                 return 1;
-            if (pos.at(chess::Square(ix, iy)).type() != chess::PieceType::PAWN) break;
         }
+        // Check black bishops on same color
+        else if (pieceCount[7] == 2)
+        {
+            chess::Bitboard bishops = board.pieces(chess::PieceType::BISHOP, chess::Color::BLACK);
+            chess::Square first = bishops.pop();
+            chess::Square second = bishops.pop();
+            if (chess::Square::same_color(first, second))
+                return 1;
+        }
+
+        // KNNvK
+        if ((pieceCount[1] == 2 && pieceCount[6] == 0) ||
+            (pieceCount[1] == 0 && pieceCount[6] == 2))
+            return 1;
+
+        // KBNvK
+        if ((pieceCount[1] == 1 && pieceCount[2] == 1) ||
+            (pieceCount[6] == 1 && pieceCount[7] == 1))
+            return 1;
+
+        // KNvKN
+        if (pieceCount[1] == 1 && pieceCount[6] == 1)
+            return 1;
+    }
+    // KPvK with Rule of the Square
+    chess::Square wk = board.kingSq(chess::Color::WHITE),
+                  bk = board.kingSq(chess::Color::BLACK);
+    if (totalNonPawnPieces == 0 && totalPawns == 1)
+    {
+        chess::Square pawn = board.pieces(chess::PieceType::PAWN).pop();
+        auto c = board.at(pawn).color();
+        chess::Square promoSq(pawn.file(), chess::Rank::rank(chess::Rank::RANK_8, c));
+        if (chess::Square::value_distance((c ? bk : wk), promoSq) > chess::Square::value_distance(pawn, promoSq))
+            return 1;
     }
     return 0;
 }
-int rook_on_file(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, rook_on_file);
-    if (pos.at(square) != chess::Piece::WHITEROOK)
+// 3. Main evaluation
+int16_t eg(const chess::Position& pos){
+    if (draw(pos)) return 0;
+    int score = space(pos) + tempo(pos) + material(pos) + passed(pos);
+    return score;
+}
+int16_t mg(const chess::Position& pos){
+    return material(pos) + space(pos) + tempo(pos) + mobility(pos) + king_safety(pos);
+}
+int16_t eval(const chess::Position &pos)
+{
+    const int phase = ::phase(pos);
+    return ((mg(pos) * phase) + (eg(pos) * (256 - phase))) / 256;
+}
+
+int16_t piece_value(chess::PieceType p){
+    switch((int)p){
+        case (int)chess::PieceType::PAWN: return PawnValue;
+        case (int)chess::PieceType::KNIGHT: return KnightValue;
+        case (int)chess::PieceType::BISHOP: return BishopValue;
+        case (int)chess::PieceType::ROOK: return RookValue;
+        case (int)chess::PieceType::QUEEN: return QueenValue;
+        default:
         return 0;
-    int open=1;
-    for (int i = 0; i < 8; i++)
-    {
-        const chess::Piece p=pos.at(chess::Square(square.file(), i));
-        if (p == chess::Piece::WHITEPAWN) return 0;
-        if (p == chess::Piece::BLACKPAWN) open = 0;
     }
-    return open+1;
-}
-class MoveGenHook: chess::movegen{
-public:
-    template <Color::underlying c, PieceType::underlying pt>
-    [[nodiscard]] static Bitboard ppinMask(const Board &board, Square sq, Bitboard occ_enemy, Bitboard occ_us) noexcept{
-pinMask<c,pt>(board, sq,occ_enemy,occ_us);
-}
-}
-int blockers_for_king(const chess::Position& pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
-    if (square == chess::Square::underlying::NO_SQ)
-	return sum(pos, blockers_for_king);
-    if (pinned_direction(colorflip(pos),
-			 chess::Square(square.file(), 7-square.rank())
-	return 1;
-}
-int mobility_area(const chess::Position& pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
-    if (square == chess::Square::underlying::NO_SQ)
-	return sum(pos, mobility_area);
-    chess::PieceType b=pos.at(square).type();
-    if (b==chess::Piece::WHITEQUEEN&&
-        b==chess::Piece::WHITEKING)
-	return 0;
-    if (pos.at(square-9)==chess::Piece::BLACKPAWN||
-	pos.at(square+7)==chess::Piece::BLACKPAWN)
-	return 0;
-    if (b==chess::Piece::WHITEPAWN&&
-	(square.rank()<4||pos.at(square-1)!=chess::Piece::NONE))
-	return 0;
-    if (blockers_for_king(colorflip(pos),
-			  chess::Square(square.file(), 7-square.rank()))
-	return 0;
-    return 1;
-}
-int mobility(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, mobility);
-    int v=0;
-    chess::PieceType b=pos.at(square).type();
-    if (b!=chess::PieceType::NONE&& //most likely
-        b!=chess::PieceType::PAWN&&
-        b!=chess::PieceType::KING) //definitely, but only 2
-        return 0;
-    for (int i=0;i<64;i++){
-	
-    }
-}
-int trapped_rook(const chess::Position &pos, const chess::Square &square = chess::Square::underlying::NO_SQ){
-    if (square == chess::Square::underlying::NO_SQ)
-        return sum(pos, trapped_rook);
-    
-    if (pos.at(square) != chess::Piece::WHITEROOK||
-        rook_on_file(pos, square)||
-        mobility(pos, square)>3)return 0;
-}
-int pieces_mg(const chess::Position &pos)
-{
-    int v = 0;
-    chess::Bitboard pieces = pos.pieces(chess::PieceType::KNIGHT, chess::Color::WHITE) |
-                             pos.pieces(chess::PieceType::BISHOP, chess::Color::WHITE) |
-                             pos.pieces(chess::PieceType::ROOK, chess::Color::WHITE) |
-                             pos.pieces(chess::PieceType::QUEEN, chess::Color::WHITE);
-
-    while (pieces)
-    {
-        chess::Square square(pieces.pop()); // Get and remove the LSB
-        v += std::array<int, 5>{0, 31, -7, 30, 56}[outpost_total(pos, square)];
-        v += 18 * minor_behind_pawn(pos, square);
-        v -= 3 * bishop_pawns(pos, square);
-        v -= 4 * bishop_xray_pawns(pos, square);
-        v += 6 * rook_on_queen_file(pos, square);
-        v += 16 * rook_on_king_ring(pos, square);
-        v += 24 * bishop_on_king_ring(pos, square);
-        v += std::array<int, 3>{0, 19, 48}[rook_on_file(pos, square)];
-        v -= trapped_rook(pos, square) * 55 * (pos.castlingRights().has(chess::Color::WHITE) + 1);
-        v -= 56 * weak_queen(pos, square);
-        v -= 2 * queen_infiltration(pos, square);
-        v -= (pos.at(square) == chess::Piece::WHITEKNIGHT ? 8 : 6) * king_protector(pos, square);
-        v += 45 * long_diagonal_bishop(pos, square);
-    }
-
-    return v;
-}
-
-int middle_game_evaluation(const chess::Position &pos, bool nowinnable = false)
-{
-    int v = 0;
-    v += piece_value_mg(pos) - piece_value_mg(colorflip(pos));
-    v += psqt_mg(pos) - psqt_mg(colorflip(pos));
-    v += imbalance_total(pos);
-    v += pawns_mg(pos) - pawns_mg(colorflip(pos));
-    v += pieces_mg(pos) - pieces_mg(colorflip(pos));
-    v += mobility_mg(pos) - mobility_mg(colorflip(pos));
-    v += threats_mg(pos) - threats_mg(colorflip(pos));
-    v += passed_mg(pos) - passed_mg(colorflip(pos));
-    v += space(pos) - space(colorflip(pos));
-    v += king_mg(pos) - king_mg(colorflip(pos));
-    if (!nowinnable)
-        v += winnable_total_mg(pos, v);
-    return v;
-}
-int eval(const chess::Position &pos)
-{
-    int p = phase(pos);
-    int eg = end_game_evaluation(pos);
-    eg = eg * scale_factor(pos, eg) / 64;
-    return ((((middle_game_evaluation(pos) * p + eg * (128 - p)) >> 7) & ~15) + tempo(pos)) * (100 - rule50(pos)) / 100;
 }

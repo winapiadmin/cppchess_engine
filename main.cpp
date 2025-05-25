@@ -15,12 +15,8 @@
 using namespace std;
 
 // Constants
-#define MAX_SCORE_CP 31000
-#define MATE(ply) (32000 - (ply))
 #define IS_MATE_SCORE(score) (abs(score) >= MAX_SCORE_CP)
-#define MATE_DISTANCE(score) (MATE(0) - abs(score))
 constexpr unsigned INFINITE_TIME = std::numeric_limits<unsigned>::max();
-constexpr unsigned DEFAULT_TIME_LIMIT = 5000;
 
 // Thread handle
 static std::thread search_thread;
@@ -32,7 +28,7 @@ void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool i
 
     search::tt.newSearch();
     search::start_time = std::chrono::high_resolution_clock::now();
-    search::time_limit = std::chrono::milliseconds((int)(time_limit_ms*0.2));
+    search::time_limit = std::chrono::milliseconds((int)(time_limit_ms*0.01));
     search::PV stablePV;
 
     clock_t t1 = clock();
@@ -58,7 +54,7 @@ void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool i
             score = search::alphaBeta(board, alpha, beta, d);
         }
 
-        if (score > prev_score)
+        if (search::pv.cmove>0)
         {
             memcpy(&stablePV, &search::pv, sizeof(search::PV));
         }
@@ -73,7 +69,7 @@ void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool i
         if (!IS_MATE_SCORE(score))
             cout << " cp " << score;
         else
-            cout << " mate " << (score < 0 ? "-" : "") << ((MATE_DISTANCE(score) + 1) / 2);
+            cout << " mate " << ((MATE_DISTANCE(score) + 1) / 2);
         cout << " time " << int(elapsed_ms)
              << " nodes " << search::nodes
              << " nps " << int(search::nodes / max(elapsed_ms / 1000.0, 1e-3))
@@ -202,11 +198,14 @@ int main()
             }
 
             search::stop_requested = false;
-            unsigned time_limit_ms = infinite ? INFINITE_TIME : (movetime >= 0 ? movetime : DEFAULT_TIME_LIMIT);
+            unsigned time_limit_ms = INFINITE_TIME;
+            if (!infinite&&movetime>=0){
+                time_limit_ms=movetime;
+            }
             chess::Position board_copy = board;
 
             search_thread = std::thread(run_search, board_copy, depth, time_limit_ms, infinite);
-            //search_thread.detach();
+            search_thread.detach();
         }
         else if (token == "d")
         {
@@ -219,9 +218,6 @@ int main()
 
             board.setFen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1");
             cout << "White up a queen: " << eval(board) << endl;
-
-            board.setFen("7k/8/8/8/8/8/8/7R b - - 0 1");
-            cout << "Mate Eval: " << eval(board) << endl;
         }
     }
 
