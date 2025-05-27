@@ -25,13 +25,11 @@ static std::thread search_thread;
 void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool infinite)
 {
     int prev_score = 0;
-
+    search::nodes=0;
     search::tt.newSearch();
     search::start_time = std::chrono::high_resolution_clock::now();
-    search::time_limit = std::chrono::milliseconds((int)(time_limit_ms*0.01));
+    search::time_limit = std::chrono::milliseconds((int)(time_limit_ms * 0.01));
     search::PV stablePV;
-
-    clock_t t1 = clock();
 
     for (int d = 1; (depth == -1 || d <= depth) && !search::stop_requested.load(); ++d)
     {
@@ -39,7 +37,6 @@ void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool i
         int beta = prev_score + ASPIRATION_DELTA;
 
         int16_t score = search::alphaBeta(board, alpha, beta, d);
-        memcpy(&stablePV, &search::pv, sizeof(search::PV));
 
         if (score <= alpha)
         {
@@ -53,38 +50,12 @@ void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool i
             beta = MATE(0);
             score = search::alphaBeta(board, alpha, beta, d);
         }
-
-        if (search::pv.cmove>0)
-        {
-            memcpy(&stablePV, &search::pv, sizeof(search::PV));
-        }
-
-        prev_score = score;
-
-        clock_t t2 = clock();
-        double elapsed_ms = double(t2 - t1) / CLOCKS_PER_SEC * 1000.0;
-
-        cout << "info depth " << d
-             << " score";
-        if (!IS_MATE_SCORE(score))
-            cout << " cp " << score;
-        else
-            cout << " mate " << ((MATE_DISTANCE(score) + 1) / 2);
-        cout << " time " << int(elapsed_ms)
-             << " nodes " << search::nodes
-             << " nps " << int(search::nodes / max(elapsed_ms / 1000.0, 1e-3))
-             << " pv ";
-
-        for (int i = 0; i < 256 && stablePV.argmove[i] != chess::Move(); i++)
-            cout << stablePV.argmove[i] << " ";
-        cout << endl;
-
         if (!infinite && search::check_time())
             break;
     }
 
-    chess::Move best = stablePV.argmove[0];
-    chess::Move ponder = stablePV.argmove[1];
+    chess::Move best = search::pv.argmove[0];
+    chess::Move ponder = search::pv.argmove[1];
 
     if (best != chess::Move())
     {
@@ -95,7 +66,7 @@ void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool i
     }
     else
     {
-        cout << "bestmove 0000" << endl;
+        cout << "bestmove (none)" << endl;
     }
 }
 
@@ -131,8 +102,6 @@ int main()
         else if (token == "stop")
         {
             search::stop_requested = true;
-            if (search_thread.joinable())
-                search_thread.join();
         }
         else if (token == "position")
         {
@@ -199,8 +168,9 @@ int main()
 
             search::stop_requested = false;
             unsigned time_limit_ms = INFINITE_TIME;
-            if (!infinite&&movetime>=0){
-                time_limit_ms=movetime;
+            if (!infinite && movetime >= 0)
+            {
+                time_limit_ms = movetime;
             }
             chess::Position board_copy = board;
 
@@ -213,11 +183,40 @@ int main()
         }
         else if (token == "bench")
         {
-            board.setFen(chess::constants::STARTPOS);
-            cout << "Startpos Eval: " << eval(board) << endl;
+            uint64_t nodes=0;
+            std::vector<std::string> fen_list = {"r7/pp3kb1/7p/2nr4/4p3/7P/PP1N1PP1/R1B1K2R b KQ - 1 19",
+                                                 "r1bqk2r/pppp1ppp/2n5/4p3/4P3/2N5/PPPP1PPP/R1BQK2R w KQkq - 0 1",
+                                                 "rnbqkb1r/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                                                 "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+                                                 "8/pp3k2/7p/2nR4/4p3/7P/Pb3PP1/6K1 b - - 1 25",
+                                                 "8/p4k2/1p1R3p/2n5/4p3/7P/Pb3PP1/6K1 b - - 1 26",
+                                                 "8/p4k2/1p1R1b1p/2n5/4p3/7P/P4PP1/5K2 b - - 3 27",
+                                                 "8/p3k3/1pR2b1p/2n5/4p3/7P/P4PP1/5K2 b - - 5 28",
+                                                 "1R6/8/1p1knb1p/p7/4p3/7P/P3KPP1/8 b - - 3 32",
+                                                 "3R4/8/1p1k3p/p7/3bp2P/6Pn/P3KP2/8 b - - 2 35",
+                                                 "8/4R3/1p6/p5PP/3b4/2n2K2/P2kp3/8 w - - 1 46",
+                                                 "rnbqkb1r/ppp1pppp/1n6/8/8/2N2N2/PPPP1PPP/R1BQKB1R w KQkq - 2 5",
+                                                 "r2qr1k1/1ppb1pbp/np4p1/3Pp3/4N3/P2B1N1P/1PP2PP1/2RQR1K1 b - - 6 16"};
+            auto start_time = std::chrono::high_resolution_clock::now();
+            for (int i=0;i<fen_list.size();i++)
+            {
+                string fen = fen_list[i];
+                std::cout<<"Position "<<i<<"/"<<fen_list.size()-1<<std::endl;
+                board.setFen(fen);
+                run_search(board, 8, INFINITE_TIME, false);
+                nodes+=search::nodes;
+            }
+            auto end_time = std::chrono::high_resolution_clock::now();
 
-            board.setFen("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPP1/RNBQKBNR w KQkq - 0 1");
-            cout << "White up a queen: " << eval(board) << endl;
+            std::chrono::duration<double> elapsed_seconds = end_time - start_time;
+            printf("===========================\n");
+            printf("Total time (ms) : %d\n", int(elapsed_seconds.count() * 1000));
+            printf("Nodes searched  : %llu\n", nodes);
+            printf("Nodes/second    : %llu\n", (uint64_t)(nodes/elapsed_seconds.count()));
+        }
+        else if (token == "eval")
+        {
+            trace(board);
         }
     }
 

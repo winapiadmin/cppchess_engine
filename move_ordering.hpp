@@ -21,8 +21,8 @@ inline int mvvLva(chess::PieceType victim, chess::PieceType attacker) {
 inline chess::Move counterMove[64][64];
 inline int16_t history[2][64][64] = {};
 inline chess::Move killerMoves[2][128] = {};
-void moveOrder(chess::Position& board, chess::Movelist& moves, int ply);
-
+void moveOrder(chess::Position&, chess::Movelist&, int, chess::Move);
+int16_t see(const chess::Position&, chess::Square);
 inline void updateKillers(chess::Move move, int ply) {
     if (killerMoves[0][ply] != move) {
         killerMoves[1][ply] = killerMoves[0][ply];

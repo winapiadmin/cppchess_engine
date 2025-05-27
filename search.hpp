@@ -10,12 +10,12 @@ namespace search
     struct PV
     {
       int cmove; // Number of moves in the line.
-      chess::Move argmove[64]; // The line.
+      int16_t argmove[64]; // The line.
       void clear() {
         cmove = 0;
         // Optional, but useful:
         for (auto &m : argmove)
-            m = chess::Move();
+            m = 0;
       }
     };
     inline uint64_t nodes=0;  // Track number of nodes

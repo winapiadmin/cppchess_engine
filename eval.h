@@ -4,90 +4,6 @@
 #include <vector>
 #include <cstdint>
 #include <cstring>
-#if __cplusplus >= 202002L
-#define POPCOUNT64(bits) std::popcount(bits);
-#elif defined(USE_POPCNT)
-#if defined(__GNUC__) || defined(__clang__)
-#define POPCOUNT64(x) __builtin_popcountll(x)
-#elif defined(_MSC_VER)
-#include <intrin.h>
-#define POPCOUNT64(x) __popcnt64(x)
-#elif defined(__INTEL_COMPILER)
-#include <immintrin.h>
-#define POPCOUNT64(x) _popcnt64(x)
-#else
-#error "Use C++20, it provides popcount"
-#endif
-#else
-// Fallback manual implementation using Brian Kernighan's Algorithm
-inline int popcount(uint64_t n)
-{
-	int count = 0;
-	while (n)
-	{
-		n &= (n - 1); // Clear the least significant set bit
-		count++;
-	}
-	return count;
-}
-#define POPCOUNT64(x) popcount(x)
-#endif
-#define countBits POPCOUNT64
-
-#if __cplusplus >= 202002L
-inline int lsb(uint64_t &p) { return std::countl_zero(p) ^ 63; }
-#elif defined(__GNUC__) || defined(__clang__)
-inline int lsb(uint64_t p) { return __builtin_ctzll(p); }
-#elif defined(_MSC_VER) // MSVC compiler
-// Cross-platform implementation of __builtin_ctzll
-inline int lsb(uint64_t x)
-{
-	if (x == 0)
-		return 64; // Undefined behavior for 0, return max bits
-
-	unsigned long index;
-	_BitScanForward64(&index, x);
-	return static_cast<int>(index);
-}
-#else
-static const uint8_t ctz_table[256] = {
-	8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4,
-	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-uint64_t lsb(uint64_t x)
-{
-	uint8_t *bytes = (uint8_t *)&x;
-	int i;
-	for (i = 0; i < 8; i++)
-	{
-		if (bytes[i] != 0)
-		{
-			return i * 8 + ctz_table[bytes[i]];
-		}
-	}
-	return 64;
-}
-#endif
-#if defined(__GNUC__) || defined(__clang__)
-#define RESTRICT __restrict__
-#elif defined(_MSC_VER)
-#define RESTRICT __restrict
-#else
-#define RESTRICT
-#endif
 class MoveStack {
 	public:
 	 using value_type      = chess::Move;
@@ -219,9 +135,7 @@ namespace chess
 #define MATE(i) MAX_MATE-i
 #define MATE_DISTANCE(i) (i - MAX_MATE)
 int16_t eval(const chess::Position &board);
-inline int16_t eval(chess::Position &board) {
-    return eval(static_cast<const chess::Position&>(board));
-}
 constexpr int16_t ASPIRATION_DELTA = 30;
 int16_t piece_value(chess::PieceType p);
 int16_t passed(const chess::Position &pos);
+void trace(const chess::Position& pos);

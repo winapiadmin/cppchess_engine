@@ -13,7 +13,7 @@ all: $(EXEC)
 
 # Linking the object files into the executable
 $(EXEC): $(OBJ)
-	$(CXX) $(LDFLAGS) -o $(EXEC) $(OBJ)
+	$(CXX) $(LDFLAGS) -pthread -o $(EXEC) $(OBJ)
 
 # Rule to build object files from source files
 %.o: %.cpp
