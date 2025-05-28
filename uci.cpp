@@ -76,28 +76,51 @@ inline void handle_stop() { search::stop_requested = true; }
 inline void handle_display() { std::cout << board << std::endl; }
 
 inline void handle_eval() { trace(board); }
-
 void handle_position(std::istringstream& iss) {
-    std::string sub;
-    iss >> sub;
+    std::string token;
+    iss >> token;
 
-    if (sub == "startpos") {
+    if (token == "startpos") {
         board.setFen(chess::constants::STARTPOS);
-        if (iss >> sub && sub == "moves") {
-            while (iss >> sub) board.makeMove(chess::uci::uciToMove(board, sub));
+        iss >> token;
+    } else if (token == "fen") {
+        std::vector<std::string> fen_parts;
+        while (iss >> token && token != "moves") {
+            fen_parts.push_back(token);
         }
-    } else if (sub == "fen") {
-        std::string fen, temp;
-        int fenParts = 6;
-        while (fenParts-- && iss >> temp) fen += temp + " ";
+
+        // Assign default values if necessary
+        while (fen_parts.size() < 6) {
+            switch (fen_parts.size()) {
+                case 1: fen_parts.push_back("w"); break; // Active color
+                case 2: fen_parts.push_back("-"); break; // Castling availability
+                case 3: fen_parts.push_back("-"); break; // En passant target square
+                case 4: fen_parts.push_back("0"); break; // Halfmove clock
+                case 5: fen_parts.push_back("1"); break; // Fullmove number
+            }
+        }
+
+        // Reconstruct the FEN string
+        std::string fen = fen_parts[0];
+        for (size_t i = 1; i < 6; ++i) {
+            fen += " " + fen_parts[i];
+        }
+
         board.setFen(fen);
-        if (iss >> sub && sub == "moves") {
-            while (iss >> sub) board.makeMove(chess::uci::uciToMove(board, sub));
+    }
+
+    if (token == "moves") {
+        while (iss >> token) {
+            chess::Move mv = chess::uci::uciToMove(board, token);
+            fprintf(stderr, "[DEBUG] User interface received move: %s, Internal interface received move: ", token.c_str());
+            std::cout << mv << std::endl;
+            board.makeMove(mv);
         }
     }
 
     search::tt.clear();
 }
+
 
 void handle_bench() {
     chess::Position board;
@@ -138,10 +161,14 @@ void handle_go(std::istringstream& iss) {
     std::string sub;
 
     while (iss >> sub) {
-        if (sub == "depth") iss >> depth;
-        else if (sub == "movetime") iss >> movetime;
-        else if (sub == "wtime" && white) iss >> movetime;
-        else if (sub == "btime" && !white) iss >> movetime;
+        if (sub == "depth")
+            iss >> depth;
+        else if (sub == "movetime")
+            iss >> movetime;
+        else if (sub == "wtime" && white)
+            iss >> movetime;
+        else if (sub == "btime" && !white)
+            iss >> movetime;
         else if (sub == "infinite") {
             infinite = true;
             depth = MAX_PLY;
@@ -171,16 +198,27 @@ void uci_loop() {
         std::istringstream iss(line);
         std::string token;
         iss >> token;
-        if (token == "ucinewgame") handle_ucinewgame();
-        else if (token == "uci") handle_uci();
-        else if (token == "isready") handle_isready();
-        else if (token == "quit") handle_quit();
-        else if (token == "stop") handle_stop();
-        else if (token == "setoption") handleSetOption(line);
-        else if (token == "position") handle_position(iss);
-        else if (token == "go") handle_go(iss);
-        else if (token == "d") handle_display();
-        else if (token == "bench") handle_bench();
-        else if (token == "eval") handle_eval();
+        if (token == "ucinewgame")
+            handle_ucinewgame();
+        else if (token == "uci")
+            handle_uci();
+        else if (token == "isready")
+            handle_isready();
+        else if (token == "quit")
+            handle_quit();
+        else if (token == "stop")
+            handle_stop();
+        else if (token == "setoption")
+            handleSetOption(line);
+        else if (token == "position")
+            handle_position(iss);
+        else if (token == "go")
+            handle_go(iss);
+        else if (token == "d")
+            handle_display();
+        else if (token == "bench")
+            handle_bench();
+        else if (token == "eval")
+            handle_eval();
     }
 }

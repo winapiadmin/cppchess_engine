@@ -158,7 +158,7 @@ int16_t alphaBeta(chess::Position &board, int16_t alpha, int16_t beta, int depth
     if (pv.cmove > 0) {
         std::cout << " pv";
         for (int i = 0; i < pv.cmove; ++i) {
-            std::cout << " " << chess::Move(pv.argmove[i]);
+            std::cout << " " << chess::uci::moveToUci(chess::Move(pv.argmove[i]), board.chess960());
         }
     }
 
