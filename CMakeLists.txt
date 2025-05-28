@@ -18,7 +18,9 @@ set(SOURCES
     eval.cpp
     search.cpp
     tt.cpp
-    move_ordering.cpp
+    move_ordering.cpp 
+    uci.cpp
+    ucioptions.cpp
 )
 
 # Define the executable

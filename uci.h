@@ -1,0 +1,10 @@
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <thread>
+#include "chess.hpp"
+#include "search.hpp"
+void uci_loop();

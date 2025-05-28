@@ -135,7 +135,6 @@ namespace chess
 #define MATE(i) MAX_MATE-i
 #define MATE_DISTANCE(i) (i - MAX_MATE)
 int16_t eval(const chess::Position &board);
-constexpr int16_t ASPIRATION_DELTA = 30;
 int16_t piece_value(chess::PieceType p);
 int16_t passed(const chess::Position &pos);
 void trace(const chess::Position& pos);

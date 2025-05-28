@@ -24,6 +24,7 @@ void TranspositionTable::store(uint64_t hash, const chess::Move& bestMove, int16
     TTEntry& e1 = table[index + 1];
 
     for (TTEntry* e : {&e0, &e1}) {
+        currentTime++;
         if (!e->valid() || e->hash == hash || e->depth() < depth) {
             e->hash = hash;
             e->bestMove = bestMove;
@@ -42,7 +43,7 @@ TTEntry* TranspositionTable::probe(uint64_t hash) {
     size_t index = (hash & sizeMask) * 2;
     TTEntry& e0 = table[index];
     TTEntry& e1 = table[index + 1];
-
+    currentTime++;
     if (e0.valid() && e0.hash == hash) {
         ++tthits;
         return &e0;

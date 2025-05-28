@@ -4,6 +4,7 @@
 #include <chrono>
 #include "eval.h"
 #include "tt.hpp"
+#include "ucioptions.hpp"
 #include <atomic>
 namespace search
 {
@@ -24,6 +25,7 @@ namespace search
     extern std::atomic<bool> stop_requested;
     int16_t alphaBeta(chess::Position &board, int16_t alpha, int16_t beta, int depth);
     int16_t quiescence(chess::Position &board, int16_t alpha, int16_t beta, int ply);
+    void run_search(chess::Position board, int depth, unsigned time_limit_ms, bool infinite);
     bool check_time();
     extern TranspositionTable tt;
     extern PV pv;
