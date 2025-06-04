@@ -1,87 +1,122 @@
-// File: tt.hpp
 #pragma once
-
 #include "chess.hpp"
-#include <vector>
-#include <cstdint>
+#include <cmath>
 #include <cstring>
-#include <memory>
+enum class TTFlag : uint8_t
+{
+    EXACT = 0,
+    LOWERBOUND = 1,
+    UPPERBOUND = 2,
+    // 3 is unused or reserved
+};
 
-inline uint64_t tthits = 0;
-inline uint64_t ttmiss = 0;
-inline uint64_t ttDepthHits[256]={};
-enum TTFlag : uint8_t { EXACT = 0, LOWERBOUND = 1, UPPERBOUND = 2 };
+struct TTEntry
+{
+    uint64_t hash;
+    chess::Move bestMove;
+    uint64_t packed;
 
-struct TTEntry {
-    uint64_t hash;              // 64-bit Zobrist hash
-    chess::Move bestMove;       // Typically 16-bit move encoding
-    uint64_t packed;            // Packed metadata field (now includes PV length)
-    chess::Move pv[64];         // Vector to store the PV moves (variable length)
-
-    uint8_t  depth()     const { return packed >> 56; }
-    TTFlag   flag()      const { return static_cast<TTFlag>((packed >> 54) & 0x3); }
-    int16_t  score()     const { return bestMove.score(); }
-    uint64_t timestamp() const { return (packed >> 1) & 0x1FFFFFFFFFULL; }
-    
-    /** 
-     * Checks if the transposition table entry is valid.
-     * @return true if the entry is valid, false otherwise
-     */
-    bool     valid()     const { return packed & 1; }
-    
-    // 16-bit PV length getter
-    uint16_t pvLength() const { return (packed >> 40) & 0xFFFF; }  // Extract 16-bit PV length
-    
-    // 16-bit PV length setter
-    void setPVLength(uint16_t length) { 
-        packed = (packed & ~(0xFFFFULL << 40)) | (uint64_t(length) << 40); // Set the 16-bit PV length in packed field
+    // Getters
+    uint8_t depth() const
+    {
+        return ((packed >> 58) & 0x3F) + 1; // 6 bits depth-1
     }
 
-    // Set function updated to handle PV length and PV moves
-    void set(uint8_t d, TTFlag f, int16_t s, uint64_t ts, bool v, uint16_t pvLen, chess::Move* moves) {
-        packed = (uint64_t(d) << 56) |
-                 (uint64_t(f) << 54) |
-                 ((ts & 0x1FFFFFFFFFULL) << 1) |
-                 (v ? 1ULL : 0) |
-                 (uint64_t(pvLen) << 40); // Set PV length in the packed field
+    TTFlag flag() const
+    {
+        return static_cast<TTFlag>((packed >> 56) & 0x3);
+    }
 
+    uint64_t timestamp() const
+    {
+        return (packed >> 17) & 0x7FFFFFFFFFULL; // 39 bits
+    }
+
+    bool valid() const
+    {
+        return (packed & 1) != 0;
+    }
+
+    int16_t score() const
+    {
+        return bestMove.score();
+    }
+
+    // Setter
+    void set(uint8_t d, TTFlag f, int16_t s, uint64_t ts, bool v, chess::Move move)
+    {
+        // Store depth - 1 in 6 bits, clamp at 63
+        uint8_t depth_encoded = (d > 0) ? (d - 1) : 0;
+        if (depth_encoded > 63)
+            depth_encoded = 63;
+
+        packed = (uint64_t(depth_encoded) << 58) |
+                 (uint64_t((int)f & 0x3) << 56) |
+                 ((ts & 0x7FFFFFFFFFULL) << 17) |
+                 (v);
+        bestMove=move;
         bestMove.setScore(s);
-        memcpy(pv, moves, sizeof(chess::Move) * pvLen); // Copy PV moves
-    }
-
-    // Function to set a PV move at a specific index
-    void setPVMove(uint16_t index, const chess::Move& move) {
-        if (index < pvLength()) {
-            pv[index] = move;
-        }
-    }
-
-    // Function to get a PV move at a specific index
-    chess::Move getPVMove(uint16_t index) const {
-        if (index < pvLength()) {
-            return pv[index];
-        }
-        return chess::Move();  // Return an invalid move if out of bounds
     }
 };
-class TranspositionTable {
-private:
-    TTEntry* table = nullptr;
-    size_t sizeMask = 0;
-    size_t entryCount = 0;
-    uint64_t currentTime = 0;
+class TranspositionTable
+{
+    TTEntry *table;
+    int buckets; // number of buckets (pairs)
+    uint32_t time;
 
 public:
-    explicit TranspositionTable(size_t sizePow2);
-    ~TranspositionTable();
+    int size; // total number of TTEntry elements (must be even)
+    TranspositionTable() : table(nullptr), buckets(0), time(0), size(0) {}
 
-    void clear();
-    void clear_stats() {
-        tthits = 0;
-        ttmiss = 0;
-        std::memset(ttDepthHits, 0, sizeof(ttDepthHits));
+    TranspositionTable(int sizeInMB) : time(0)
+    {
+        size = sizeInMB * 1048576 / sizeof(TTEntry);
+        if (size % 2 != 0)
+            size--; // Ensure even size
+        buckets = size / 2;
+        table = new TTEntry[size];
+        clear();
     }
+
+    ~TranspositionTable()
+    {
+        delete[] table;
+    }
+
+    void resize(int sizeInMB)
+    {
+        TTEntry *old_table = table;
+        int old_size = size;
+
+        size = sizeInMB * 1048576 / sizeof(TTEntry);
+        if (size % 2 != 0)
+            size--;
+        buckets = size / 2;
+
+        TTEntry *new_table = new (std::nothrow) TTEntry[size];
+        if (!new_table)
+        {
+            // Restore old values on failure
+            table = old_table;
+            size = old_size;
+            buckets = old_size / 2;
+            throw std::bad_alloc();
+        }
+
+        std::memcpy(new_table, old_table,
+                    sizeof(TTEntry) * std::min(size, old_size));
+        delete[] old_table;
+        table  = new_table;
+        buckets = size / 2;
+    }
+
     void newSearch();
-    void store(uint64_t hash, const chess::Move& bestMove, int16_t score, uint8_t depth, TTFlag flag, chess::Move* pv, uint16_t pvLen);
-    TTEntry* probe(uint64_t hash);
+    void store(uint64_t hash, chess::Move best, int16_t score, int8_t depth, TTFlag flag);
+
+    inline void clear()
+    {
+        std::fill_n(table, size, TTEntry{});
+    }
+
+    TTEntry *lookup(uint64_t hash);
 };

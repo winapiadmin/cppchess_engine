@@ -1,63 +1,53 @@
 #include "tt.hpp"
-const int8_t depthMargin=0;
-TranspositionTable::TranspositionTable(size_t sizePow2)
-    : sizeMask{(1ULL << sizePow2) - 1},
-      entryCount(1ULL << sizePow2),
-      currentTime(0)
+
+void TranspositionTable::newSearch()
 {
-    table = (TTEntry*)malloc(entryCount * 2 * sizeof(TTEntry)); // 2 entries per bucket
-    clear();
+    time = 0;
 }
 
-TranspositionTable::~TranspositionTable() {
-    free(this->table);
-}
-void TranspositionTable::clear() {
-    std::memset(table, 0, sizeof(TTEntry) * entryCount*2);
-}
-void TranspositionTable::newSearch() {
-    currentTime++;
-}
-void TranspositionTable::store(uint64_t hash, const chess::Move& bestMove, int16_t score, uint8_t depth, TTFlag flag, chess::Move* pv, uint16_t pvLen) {
-    size_t index = (hash & sizeMask) * 2; // Two entries per bucket
-    TTEntry& e0 = table[index];
-    TTEntry& e1 = table[index + 1];
+void TranspositionTable::store(uint64_t hash, chess::Move best, int16_t score, int8_t depth, TTFlag flag)
+{
+    // 2 entries per bucket
+    if (buckets == 0)
+        return;
+    uint64_t index = hash % buckets;
+    if (index >= buckets - 1)
+        index = buckets - 2; // Ensure we don't overflow
+    TTEntry &e0 = table[index], &e1 = table[index + 1];
+    // Store the entry
 
-    for (TTEntry* e : {&e0, &e1}) {
-        if (!e->valid() || e->hash == hash || e->depth() < depth) {
+    ++time; // monotonically increasing stamp
+    for (TTEntry *e : {&e0, &e1})
+    {
+        if (!e->valid() || e->hash == hash || e->depth() < depth)
+        {
             e->hash = hash;
-            e->bestMove = bestMove;
-            if (pv && pvLen > 0)
-                e->set(depth, flag, score, currentTime, true, pvLen, pv);
-            else
-                e->set(depth, flag, score, currentTime, true, 0, nullptr); // no PV
+            e->set(depth, flag, score, time, true, best);
             return;
         }
     }
-
-    TTEntry* victim = (e0.timestamp() <= e1.timestamp()) ? &e0 : &e1;
-    victim->hash = hash;
-    victim->bestMove = bestMove;
-    if (pv && pvLen > 0)
-        victim->set(depth, flag, score, currentTime, true, pvLen, pv);
-    else
-        victim->set(depth, flag, score, currentTime, true, 0, nullptr);
+    // If we get here, we need to evict an entry
+    // Find the oldest entry
+    TTEntry *oldest = (e0.timestamp() < e1.timestamp()) ? &e0 : &e1;
+    // Evict it
+    oldest->hash = hash;
+    oldest->set(depth, flag, score, time, true, best);
 }
 
-TTEntry* TranspositionTable::probe(uint64_t hash) {
-    size_t index = (hash & sizeMask) * 2;
-    TTEntry& e0 = table[index];
-    TTEntry& e1 = table[index + 1];
-
-    if (e0.valid() && e0.hash == hash) {
-        ++tthits;
-        return &e0;
+TTEntry *TranspositionTable::lookup(uint64_t hash)
+{
+    // 2 entries per bucket
+    if (buckets == 0)
+        return nullptr;
+    uint64_t index = hash % buckets;
+    if (index >= buckets - 1)
+        index = buckets - 2; // Ensure we don't overflow
+    TTEntry &e0 = table[index], &e1 = table[index + 1];
+    // Check the entries
+    for (TTEntry *e : {&e0, &e1})
+    {
+        if (e->valid() && e->hash == hash)
+            return e;
     }
-    if (e1.valid() && e1.hash == hash) {
-        ++tthits;
-        return &e1;
-    }
-
-    ++ttmiss;
     return nullptr;
 }
