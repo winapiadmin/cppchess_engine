@@ -1,0 +1,105 @@
+half_ka_v2_hm.o: nnue/features/half_ka_v2_hm.cpp \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/features/../../bitboard.h \
+ nnue/features/../../types.h nnue/features/../../position.h \
+ nnue/features/../../chess.hpp \
+ nnue/features/../../nnue/nnue_accumulator.h \
+ nnue/features/../../nnue/../types.h \
+ nnue/features/../../nnue/nnue_architecture.h \
+ nnue/features/../../nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../nnue/layers/affine_transform.h \
+ nnue/features/../../nnue/layers/../nnue_common.h \
+ nnue/features/../../nnue/layers/../simd.h \
+ nnue/features/../../nnue/layers/../../types.h \
+ nnue/features/../../nnue/layers/../nnue_common.h \
+ nnue/features/../../nnue/layers/affine_transform_sparse_input.h \
+ nnue/features/../../nnue/layers/../../bitboard.h \
+ nnue/features/../../nnue/layers/clipped_relu.h \
+ nnue/features/../../nnue/layers/sqr_clipped_relu.h \
+ nnue/features/../../nnue/nnue_common.h
+evaluate.o: evaluate.cpp evaluate.h types.h nnue/network.h \
+ nnue/../memory.h nnue/../types.h nnue/nnue_accumulator.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/layers/affine_transform.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../../types.h \
+ nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h \
+ nnue/nnue_common.h nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/../chess.hpp nnue/../types.h nnue/../nnue/nnue_accumulator.h \
+ nnue/simd.h nnue/nnue_misc.h nnue/nnue_misc.h position.h uci.hpp \
+ chess.hpp search.h movepick.hpp timeman.hpp tt.hpp memory.h \
+ ucioptions.hpp nnue/nnue_accumulator.h
+main.o: main.cpp search.h evaluate.h types.h movepick.hpp chess.hpp \
+ position.h nnue/nnue_accumulator.h nnue/../types.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/layers/affine_transform.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../../types.h \
+ nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h \
+ nnue/nnue_common.h timeman.hpp tt.hpp memory.h nnue/network.h \
+ nnue/../memory.h nnue/nnue_accumulator.h nnue/nnue_feature_transformer.h \
+ nnue/../position.h nnue/simd.h nnue/nnue_misc.h uci.hpp ucioptions.hpp
+search.o: search.cpp search.h evaluate.h types.h movepick.hpp chess.hpp \
+ position.h nnue/nnue_accumulator.h nnue/../types.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/layers/affine_transform.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../../types.h \
+ nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h \
+ nnue/nnue_common.h timeman.hpp tt.hpp memory.h nnue/network.h \
+ nnue/../memory.h nnue/nnue_accumulator.h nnue/nnue_feature_transformer.h \
+ nnue/../position.h nnue/simd.h nnue/nnue_misc.h
+timeman.o: timeman.cpp timeman.hpp types.h
+tt.o: tt.cpp tt.hpp chess.hpp types.h memory.h
+uci.o: uci.cpp uci.hpp chess.hpp search.h evaluate.h types.h movepick.hpp \
+ position.h nnue/nnue_accumulator.h nnue/../types.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/layers/affine_transform.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../../types.h \
+ nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h \
+ nnue/nnue_common.h timeman.hpp tt.hpp memory.h nnue/network.h \
+ nnue/../memory.h nnue/nnue_accumulator.h nnue/nnue_feature_transformer.h \
+ nnue/../position.h nnue/simd.h nnue/nnue_misc.h ucioptions.hpp
+ucioptions.o: ucioptions.cpp ucioptions.hpp
+nnue_accumulator.o: nnue/nnue_accumulator.cpp nnue/nnue_accumulator.h \
+ nnue/../types.h nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/layers/affine_transform.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../../types.h \
+ nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h \
+ nnue/nnue_common.h nnue/../bitboard.h nnue/../misc.h nnue/../position.h \
+ nnue/../chess.hpp nnue/../types.h nnue/../nnue/nnue_accumulator.h \
+ nnue/nnue_feature_transformer.h nnue/simd.h
+network.o: nnue/network.cpp nnue/network.h nnue/../memory.h \
+ nnue/../types.h nnue/nnue_accumulator.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/layers/affine_transform.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../nnue_common.h \
+ nnue/layers/affine_transform_sparse_input.h nnue/layers/../../bitboard.h \
+ nnue/layers/../../types.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h nnue/../chess.hpp \
+ nnue/../types.h nnue/../nnue/nnue_accumulator.h nnue/simd.h \
+ nnue/nnue_misc.h nnue/../incbin/incbin.h nnue/../evaluate.h \
+ nnue/../misc.h
+memory.o: memory.cpp memory.h
+movepick.o: movepick.cpp movepick.hpp chess.hpp types.h

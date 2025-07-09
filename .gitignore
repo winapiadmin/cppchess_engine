@@ -1,12 +1,12 @@
 # Ignore everything
-*
-
-# But not these directories and files
-!*.cpp
-!*.hpp
-!*.h
-!Makefile
-!README.md
-!LICENSE
-!.gitignore
-!CMakeLists.txt
+!COPYING
+src/*.nnue
+src/*.o
+src/cppchess_engine
+!src/*.cpp
+!src/*.hpp
+!src/*.h
+!src/layers/*
+!src/features/half_ka_v2_hm.cpp
+!src/features/half_ka_v2_hm.h
+!scripts
