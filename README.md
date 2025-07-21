@@ -1,5 +1,5 @@
 # cppchess_engine
 
-A minimal UCI-compilant (no time control now) chess engine
+A minimal UCI-compliant chess engine that have time control.
 
-**Source**: [Disservin/chess-library](https://github.com/Disservin/chess-library)
+**Library used**: [Disservin/chess-library](https://github.com/Disservin/chess-library)
