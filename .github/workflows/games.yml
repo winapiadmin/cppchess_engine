@@ -23,6 +23,18 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential cmake wget unzip
 
+      - name: Download fastchess
+        run: |
+          wget https://github.com/Disservin/fastchess/releases/download/v1.8.0-alpha/fastchess-linux-x86-64.tar
+          ls -R
+          cp fastchess-linux-x86-64/fastchess .
+          chmod +x fastchess
+
+      - name: Download UHO openings
+        run: |
+          wget https://github.com/official-stockfish/books/raw/refs/heads/master/UHO_Lichess_4852_v1.epd.zip
+          unzip UHO_Lichess_4852_v1.epd.zip
+
       - name: Build new engine
         run: |
           mkdir build
@@ -37,17 +49,6 @@ jobs:
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
-
-      - name: Download fastchess
-        run: |
-          wget https://github.com/Disservin/fastchess/releases/download/v1.8.0-alpha/fastchess-linux-x86-64.tar
-          cp fastchess-linux-x86-64/fastchess .
-          chmod +x fastchess
-
-      - name: Download UHO openings
-        run: |
-          wget https://github.com/official-stockfish/books/raw/refs/heads/master/UHO_Lichess_4852_v1.epd.zip
-          unzip UHO_Lichess_4852_v1.epd.zip
 
       - name: Run fastchess SPRT
         run: |
