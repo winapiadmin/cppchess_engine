@@ -1,0 +1,68 @@
+name: Fastchess SPRT Test (Linux)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fastchess:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main engine
+        uses: actions/checkout@v4
+
+      - name: Checkout HandcraftedEngine branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: HandcraftedEngine
+          path: cppchess_engine
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential cmake wget unzip
+
+      - name: Build new engine
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)
+
+      - name: Build base engine (HandcraftedEngine)
+        run: |
+          cd cppchess_engine
+          mkdir build
+          cd build
+          cmake ..
+          make -j$(nproc)
+
+      - name: Download fastchess
+        run: |
+          wget https://github.com/Disservin/fastchess/releases/download/v1.8.0-alpha/fastchess-linux-x86-64.tar
+          cp fastchess-linux-x86-64/fastchess .
+          chmod +x fastchess
+
+      - name: Download UHO openings
+        run: |
+          wget https://github.com/official-stockfish/books/raw/refs/heads/master/UHO_Lichess_4852_v1.epd.zip
+          unzip UHO_Lichess_4852_v1.epd.zip
+
+      - name: Run fastchess SPRT
+        run: |
+          ./fastchess \
+            -engine cmd=build/engine name=new \
+            -engine cmd=cppchess_engine/build/chess_engine name=base \
+            -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
+            -each tc=10+0.5 \
+            -rounds 600 \
+            -concurrency 1 \
+            -pgnout notation=san nodes=true file=games1.pgn \
+            -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05
+
+      - name: Upload PGN
+        uses: actions/upload-artifact@v4
+        with:
+          name: games
+          path: games1.pgn
