@@ -55,12 +55,12 @@ jobs:
 
       - name: Run fastchess SPRT
         run: |
-          ./fastchess \
+          ./fastchess -recover \
             -engine cmd=test_chesslib/build/engine name=new \
             -engine cmd=cppchess_engine/build/chess_engine name=base \
             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=10+0.5 \
-            -rounds 600 \
+            -rounds 6000 \
             -concurrency 1 \
             -pgnout notation=san nodes=true file=games1.pgn \
             -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05
