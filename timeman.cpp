@@ -6,7 +6,7 @@
 #include <array>
 #include <chrono>
 #include <limits>
-
+#include <cmath>
 namespace engine::timeman
 {
 
