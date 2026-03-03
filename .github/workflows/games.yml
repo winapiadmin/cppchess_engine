@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake ..
+          cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
       - name: Build base engine (HandcraftedEngine)
@@ -35,7 +35,7 @@ jobs:
           cd cppchess_engine
           mkdir build
           cd build
-          cmake ..
+          cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
       - name: Download fastchess
