@@ -56,7 +56,7 @@ jobs:
       - name: Run fastchess SPRT
         run: |
           ./fastchess \
-            -engine cmd=build/engine name=new \
+            -engine cmd=test_chesslib/build/engine name=new \
             -engine cmd=cppchess_engine/build/chess_engine name=base \
             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=10+0.5 \
