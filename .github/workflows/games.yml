@@ -3,39 +3,21 @@ name: Fastchess SPRT Test (Linux)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  fastchess:
+
+  build-new:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main engine
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           path: test_chesslib
 
-      - name: Checkout HandcraftedEngine branch
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}
-          ref: HandcraftedEngine
-          path: cppchess_engine
-
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential cmake wget unzip
-
-      - name: Download fastchess
-        run: |
-          wget https://github.com/Disservin/fastchess/releases/download/v1.8.0-alpha/fastchess-linux-x86-64.tar
-          tar -xf fastchess-linux-x86-64.tar
-          cp fastchess-linux-x86-64/fastchess .
-          chmod +x fastchess
-
-      - name: Download UHO openings
-        run: |
-          wget https://github.com/official-stockfish/books/raw/refs/heads/master/UHO_Lichess_4852_v1.epd.zip
-          unzip UHO_Lichess_4852_v1.epd.zip
+      - name: Install deps
+        run: sudo apt update && sudo apt install -y build-essential cmake
 
       - name: Build new engine
         run: |
@@ -45,19 +27,68 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
-      - name: Build base engine (HandcraftedEngine)
+      - name: Upload new engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-engine
+          path: test_chesslib/build/engine
+
+
+  build-base:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: HandcraftedEngine
+          path: handcrafted
+
+      - name: Install deps
+        run: sudo apt update && sudo apt install -y build-essential cmake
+
+      - name: Build base engine
         run: |
-          cd cppchess_engine
+          cd handcrafted
           mkdir build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
-      - name: Run fastchess SPRT
+      - name: Upload base engine
+        uses: actions/upload-artifact@v4
+        with:
+          name: base-engine
+          path: handcrafted/build/chess_engine
+
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [build-new, build-base]
+
+    steps:
+      - name: Download engines
+        uses: actions/download-artifact@v4
+
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y wget unzip
+          wget https://github.com/Disservin/fastchess/releases/download/v1.8.0-alpha/fastchess-linux-x86-64.tar
+          tar -xf fastchess-linux-x86-64.tar
+          chmod +x fastchess-linux-x86-64
+          mv fastchess-linux-x86-64 fastchess
+
+          wget https://github.com/official-stockfish/books/raw/refs/heads/master/UHO_Lichess_4852_v1.epd.zip
+          unzip UHO_Lichess_4852_v1.epd.zip
+
+          wget https://github.com/michiguel/Ordo/releases/download/1.0/ordo-linux64
+          chmod +x ordo-linux64
+
+      - name: Run fastchess
         run: |
           ./fastchess -recover \
-            -engine cmd=test_chesslib/build/engine name=new \
-            -engine cmd=cppchess_engine/build/chess_engine name=base \
+            -engine cmd=new-engine/engine name=new \
+            -engine cmd=base-engine/chess_engine name=base \
             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=10+0.5 \
             -rounds 6000 \
@@ -65,8 +96,12 @@ jobs:
             -pgnout notation=san nodes=true file=games1.pgn \
             -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05
 
-      - name: Upload PGN
+          ./ordo-linux64 -o ratings.txt -- games1.pgn
+
+      - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: games
-          path: games1.pgn
+          name: results
+          path: |
+            games1.pgn
+            ratings.txt
