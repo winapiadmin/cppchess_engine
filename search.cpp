@@ -105,7 +105,7 @@ namespace engine
       if (score > alpha){
           alpha = score;
           if (!board.isCapture(move))
-              movepick::historyHeuristic[from][to] += depth * depth;
+              movepick::historyHeuristic[(int)move.from()][(int)move.to()] += depth * depth;
       }
       if (alpha >= beta)
       {
@@ -113,7 +113,7 @@ namespace engine
           {
               if (movepick::killerMoves[ply][0] != move)
               {
-                  movepick::killerMoves[ply][1] = killerMoves[ply][0];
+                  movepick::killerMoves[ply][1] = movepick::killerMoves[ply][0];
                   movepick::killerMoves[ply][0] = move;
               }
           }
@@ -127,7 +127,7 @@ namespace engine
         return VALUE_NONE;
     }
 
-    if (maxScore != -VALUE_INFINITE)
+    if (maxScore != -VALUE_INFINITE){
       TTFlag flag;
 
       if (maxScore <= alphaOrig)
