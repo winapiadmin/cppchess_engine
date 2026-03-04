@@ -49,7 +49,7 @@ namespace engine
     session.seldepth = std::max(session.seldepth, ply);
     uint64_t hash = board.hash();
     Move preferred = Move::none();
-    if (entry->getDepth() >= depth)
+    if (TTEntry *entry = search::tt.lookup(hash);entry->getDepth() >= depth)
     {
         Value ttScore = entry->getScore();
         TTFlag flag = entry->getFlag();
