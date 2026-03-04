@@ -197,8 +197,13 @@ namespace engine::eval{
             while (occ) {
                 Square i = (Square)pop_lsb(occ);
                 auto p = board.at(i);
-                mgScore += mg_pesto_table[piece_of(p)][color_of(p) == BLACK ? square_mirror(i) : i];
-                egScore += eg_pesto_table[piece_of(p)][color_of(p) == BLACK ? square_mirror(i) : i];
+                int sign=1;
+                if (color_of(p)==BLACK){
+                    _sign=-1;
+                    i = square_mirror(i);
+                }
+                mgScore += _sign*mg_pesto_table[piece_of(p)][i];
+                egScore += _sign*eg_pesto_table[piece_of(p)][i];
             }
         }
         int finalScore = ((mgScore * phase) + (egScore * (256 - phase))) / 256 * sign;
