@@ -197,7 +197,7 @@ namespace engine::eval{
             while (occ) {
                 Square i = (Square)pop_lsb(occ);
                 auto p = board.at(i);
-                int sign=1;
+                int _sign=1;
                 if (color_of(p)==BLACK){
                     _sign=-1;
                     i = square_mirror(i);
