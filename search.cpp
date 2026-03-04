@@ -49,32 +49,33 @@ namespace engine
     session.seldepth = std::max(session.seldepth, ply);
     uint64_t hash = board.hash();
     Move preferred = Move::none();
-    if (TTEntry *entry = search::tt.lookup(hash);entry->getDepth() >= depth)
-    {
-        Value ttScore = entry->getScore();
-        TTFlag flag = entry->getFlag();
-    
-        if (flag == TTFlag::EXACT)
-        {
-            session.pv[ply][0] = Move(entry->getMove());
-            session.pv[ply][1] = Move::none();
-            return ttScore;
-        }
-    
-        if (flag == TTFlag::LOWERBOUND && ttScore >= beta)
-        {
-            session.pv[ply][0] = Move(entry->getMove());
-            session.pv[ply][1] = Move::none();
-            return ttScore;
-        }
-    
-        if (flag == TTFlag::UPPERBOUND && ttScore <= alpha)
-        {
-            session.pv[ply][0] = Move(entry->getMove());
-            session.pv[ply][1] = Move::none();
-            return ttScore;
-        }
-    }
+    if (TTEntry *entry = search::tt.lookup(hash))
+      if (entry->getDepth() >= depth)
+      {
+          Value ttScore = entry->getScore();
+          TTFlag flag = entry->getFlag();
+      
+          if (flag == TTFlag::EXACT)
+          {
+              session.pv[ply][0] = Move(entry->getMove());
+              session.pv[ply][1] = Move::none();
+              return ttScore;
+          }
+      
+          if (flag == TTFlag::LOWERBOUND && ttScore >= beta)
+          {
+              session.pv[ply][0] = Move(entry->getMove());
+              session.pv[ply][1] = Move::none();
+              return ttScore;
+          }
+      
+          if (flag == TTFlag::UPPERBOUND && ttScore <= alpha)
+          {
+              session.pv[ply][0] = Move(entry->getMove());
+              session.pv[ply][1] = Move::none();
+              return ttScore;
+          }
+      }
     if (depth == 0)
     {
       session.nodes++;
