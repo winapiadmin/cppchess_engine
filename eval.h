@@ -33,6 +33,6 @@ namespace engine{
     constexpr Value MATE_DISTANCE(int i) { return VALUE_MATE - (i<0?-i:i); }
     namespace eval {
         Value eval(const chess::Board &board);
-        Value piece_value(PieceType pt);
+        Value piece_value(chess::PieceType pt);
     }
 }
