@@ -92,7 +92,7 @@ jobs:
             -engine cmd=new-engine/engine name=new \
             -engine cmd=base-engine/chess_engine name=base \
             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
-            -each tc=10+0.5 \
+            -each tc=60+0.5 \
             -rounds 6000 \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true file=games1.pgn \
