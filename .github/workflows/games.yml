@@ -83,6 +83,8 @@ jobs:
 
           wget https://github.com/michiguel/Ordo/releases/download/1.0/ordo-linux64
           chmod +x ordo-linux64
+          chmod +x new-engine/engine
+          chmod +x base-engine/chess_engine
 
       - name: Run fastchess
         run: |
