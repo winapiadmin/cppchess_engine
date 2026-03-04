@@ -33,6 +33,7 @@ namespace engine
   }
   Value doSearch(Board &board, int depth, Value alpha, Value beta, Session &session, int ply = 0)
   {
+    Value alphaOrig=alpha;
     std::fill(std::begin(session.pv[ply + 1]), std::end(session.pv[ply + 1]),
               Move::none());
     if (session.tm.elapsed() >=
@@ -104,16 +105,16 @@ namespace engine
       if (score > alpha){
           alpha = score;
           if (!board.isCapture(move))
-              historyHeuristic[from][to] += depth * depth;
+              movepick::historyHeuristic[from][to] += depth * depth;
       }
       if (alpha >= beta)
       {
           if (!board.isCapture(move))
           {
-              if (killerMoves[ply][0] != move)
+              if (movepick::killerMoves[ply][0] != move)
               {
-                  killerMoves[ply][1] = killerMoves[ply][0];
-                  killerMoves[ply][0] = move;
+                  movepick::killerMoves[ply][1] = killerMoves[ply][0];
+                  movepick::killerMoves[ply][0] = move;
               }
           }
       
