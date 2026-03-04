@@ -2,10 +2,10 @@
 #include "eval.h"
 #include <position.h>
 using namespace chess;
-namespace engine {
+namespace engine::movepick {
     Value historyHeuristic[SQUARE_NB][SQUARE_NB]{};
     Move killerMoves[MAX_PLY][2];
-    void movepick::orderMoves(chess::Board & board, chess::Movelist & moves, chess::Move ttMove, int ply)
+    void orderMoves(chess::Board & board, chess::Movelist & moves, chess::Move ttMove, int ply)
     {
         std::vector<std::pair<chess::Move, Value>> scoredMoves;
         scoredMoves.reserve(moves.size());
