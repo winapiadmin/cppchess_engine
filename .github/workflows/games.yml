@@ -103,13 +103,13 @@ jobs:
           chmod +x ordo-linux64
 
           chmod +x new-engine/engine
-          chmod +x base-engine/chess_engine
+          chmod +x base-engine/${{ github.event.inputs.output_exec }}
 
       - name: Run fastchess
         run: |
           ./fastchess -recover \
             -engine cmd=new-engine/engine name=new \
-            -engine cmd=base-engine/chess_engine name=base \
+            -engine cmd=base-engine/${{ github.event.inputs.output_exec }} name=base \
             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=${{ github.event.inputs.tc }} \
             -rounds ${{ github.event.inputs.rounds }} \
