@@ -20,7 +20,7 @@ namespace engine::movepick {
                 score = 10000;
             else if (board.isCapture(move))
                 score = 
-                    ((move.type() & EN_PASSANT)==0?piece_value(board.at<PieceType>(move.to())):piece_value(PAWN))*10 - piece_value(board.at<PieceType>(move.from()));
+                    ((move.typeOf() & EN_PASSANT)==0?piece_value(board.at<PieceType>(move.to())):piece_value(PAWN))*10 - piece_value(board.at<PieceType>(move.from()));
             else if (move == killerMoves[ply][0])
                 score = 8500;
             else if (move == killerMoves[ply][1])
