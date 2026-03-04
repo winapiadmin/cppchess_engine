@@ -3,6 +3,7 @@
 #include <position.h>
 #include <algorithm>
 using namespace chess;
+using engine::eval::piece_value;
 namespace engine::movepick {
     Value historyHeuristic[SQUARE_NB][SQUARE_NB]{};
     Move killerMoves[64][2];
