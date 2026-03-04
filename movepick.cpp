@@ -24,7 +24,7 @@ namespace engine::movepick {
             else if (move == killerMoves[ply][1])
                 score = 8000;
             else
-                score = historyHeuristic[move.from().index()][move.to().index()];
+                score = historyHeuristic[move.from()][move.to()];
     
             scoredMoves.emplace_back(move, score);
         }
