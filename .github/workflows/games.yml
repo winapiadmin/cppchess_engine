@@ -2,7 +2,15 @@ name: Fastchess SPRT Test (Linux)
 
 on:
   workflow_dispatch:
-
+    inputs:
+      rounds:
+        description: "Number of SPRT rounds"
+        required: false
+        default: "6000"
+      tc:
+        description: "Time control"
+        required: false
+        default: "60+0.5"
 permissions:
   contents: write
 
@@ -92,8 +100,8 @@ jobs:
             -engine cmd=new-engine/engine name=new \
             -engine cmd=base-engine/chess_engine name=base \
             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
-            -each tc=60+0.5 \
-            -rounds 6000 \
+            -each tc=${{ github.event.inputs.tc }} \
+            -rounds ${{ github.event.inputs.rounds }} \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true file=games1.pgn \
             -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05
