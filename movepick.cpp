@@ -6,7 +6,7 @@ using namespace chess;
 using engine::eval::piece_value;
 namespace engine::movepick {
     Value historyHeuristic[SQUARE_NB][SQUARE_NB]{};
-    Move killerMoves[64][2];
+    Move killerMoves[256][2];
     void orderMoves(chess::Board & board, chess::Movelist & moves, chess::Move ttMove, int ply)
     {
         std::vector<std::pair<chess::Move, Value>> scoredMoves;
