@@ -2,6 +2,7 @@
 #include "eval.h"
 #include "timeman.h"
 #include "uci.h"
+#include "movepick.h"
 #include <atomic>
 #include <moves_io.h>
 #include <position.h>
@@ -30,7 +31,7 @@ namespace engine
       *pv++ = *childPv++;
     *pv = Move::none();
   }
-  Value doSearch(Board &board, int depth, Session &session, int ply = 0)
+  Value doSearch(Board &board, int depth, Value alpha, Value beta, Session &session, int ply = 0)
   {
     std::fill(std::begin(session.pv[ply + 1]), std::end(session.pv[ply + 1]),
               Move::none());
@@ -49,9 +50,20 @@ namespace engine
     Move preferred = Move::none();
     if (TTEntry *entry = search::tt.lookup(hash))
     {
+      preferred = Move(entry->getMove());
       if (entry->getDepth() >= depth)
       {
-        preferred = Move(entry->getMove());
+        Value ttScore = entry->getScore();
+        TTFlag flag = entry->getFlag();
+
+        if (flag == TTFlag::EXACT)
+            return ttScore;
+
+        if (flag == TTFlag::LOWERBOUND && ttScore >= beta)
+            return ttScore;
+
+        if (flag == TTFlag::UPPERBOUND && ttScore <= alpha)
+            return ttScore;
       }
     }
     if (depth == 0)
@@ -64,18 +76,16 @@ namespace engine
     board.legals(moves);
     if (!moves.size())
     {
-      // Checkmate or stalemate handling should go here if you implement it
       session.pv[ply][0] = Move::none();
       return board.checkers() ? -MATE(ply) : 0;
     }
-
+    movepick::orderMoves(board, moves, preferred, ply);
     for (Move move : moves)
     {
 
       board.doMove(move);
 
-      // ---- RECURSIVE CALL ----
-      Value childScore = doSearch(board, depth - 1, session, ply + 1);
+      Value childScore = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
 
       board.undoMove();
 
@@ -91,17 +101,43 @@ namespace engine
         update_pv(session.pv[ply], move, session.pv[ply + 1]);
       }
 
-      // Local time check (optional but fine)
+      if (score > alpha){
+          alpha = score;
+          if (!board.isCapture(move))
+              historyHeuristic[from][to] += depth * depth;
+      }
+      if (alpha >= beta)
+      {
+          if (!board.isCapture(move))
+          {
+              if (killerMoves[ply][0] != move)
+              {
+                  killerMoves[ply][1] = killerMoves[ply][0];
+                  killerMoves[ply][0] = move;
+              }
+          }
+      
+          break;
+      }
+      
       if (session.tm.elapsed() >=
               session.tm.optimum() ||
           stopSearch.load(std::memory_order_relaxed))
         return VALUE_NONE;
     }
 
-    // Store only if valid
     if (maxScore != -VALUE_INFINITE)
-      search::tt.store(hash, session.pv[ply][0], maxScore, depth, TTFlag::EXACT);
+      TTFlag flag;
 
+      if (maxScore <= alphaOrig)
+          flag = TTFlag::UPPERBOUND;
+      else if (maxScore >= beta)
+          flag = TTFlag::LOWERBOUND;
+      else
+          flag = TTFlag::EXACT;
+      
+      search::tt.store(hash, session.pv[ply][0], maxScore, depth, flag);
+    }
     return maxScore;
   }
   void search::search(const chess::Board &board,
@@ -115,9 +151,10 @@ namespace engine
     chess::Move lastPV[MAX_PLY]{};
     for (int i = 1; i < timecontrol.depth; i++)
     {
+      for (int i=0;i<64;i++)for (int j=0;j<64;j++)movepick::historyHeuristic[i][j]/=2;
       session.nodes = 0;
       auto board_ = board;
-      Value score_ = doSearch(board_, i, session);
+      Value score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
       if (session.tm.elapsed() >=
               session.tm.optimum() ||
           stopSearch.load(std::memory_order_relaxed) || score_ == VALUE_NONE)
