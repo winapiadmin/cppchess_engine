@@ -161,7 +161,11 @@ namespace engine
     chess::Move lastPV[MAX_PLY]{};
     for (int i = 1; i < timecontrol.depth; i++)
     {
-      for (int i=0;i<64;i++)for (int j=0;j<64;j++)movepick::historyHeuristic[i][j]/=2;
+      for (int i=0;i<64;i++)for (int j=0;j<64;j++){
+        movepick::historyHeuristic[i][j]/=2;
+        // since MAX_PLY=64
+        session.pv[i][j]=Move::none();
+      }
       session.nodes = 0;
       auto board_ = board;
       Value score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
