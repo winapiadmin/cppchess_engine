@@ -33,6 +33,7 @@ namespace engine
   }
   Value doSearch(Board &board, int depth, Value alpha, Value beta, Session &session, int ply = 0)
   {
+    if (ply >= MAX_PLY-1) return eval::eval(board);
     Value alphaOrig=alpha;
     std::fill(std::begin(session.pv[ply + 1]), std::end(session.pv[ply + 1]),
               Move::none());
