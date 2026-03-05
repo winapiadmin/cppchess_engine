@@ -49,7 +49,7 @@ namespace engine
     session.seldepth = std::max(session.seldepth, ply);
     uint64_t hash = board.hash();
     Move preferred = Move::none();
-    if (TTEntry *entry = search::tt.lookup(hash))
+    if (TTEntry *entry = search::tt.lookup(hash)){
       if (entry->getDepth() >= depth)
       {
           Value ttScore = entry->getScore();
@@ -76,6 +76,8 @@ namespace engine
               return ttScore;
           }
       }
+      preferred = Move(entry->getMove());
+    }
     if (depth == 0)
     {
       session.nodes++;
