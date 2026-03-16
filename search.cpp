@@ -31,10 +31,32 @@ namespace engine
       *pv++ = *childPv++;
     *pv = Move::none();
   }
+  Value qsearch(Board &board, Value alpha, Value beta, Session &session, int ply = 0){
+    session.nodes++;
+    int standPat=eval::eval(board);
+    Value maxScore = standPat;
+    if( maxScore >= beta )
+      return maxScore;
+    if( maxScore > alpha )
+      alpha = maxScore;
+    Movelist moves;
+    board.legals<MoveGenType::CAPTURE>(moves);
+    for (Move move:moves){
+      board.doMove(move);
+      Value score=-qsearch(board, -beta, -alpha, session, ply+1);
+      board.undoMove();
+      if (score>=beta)return score;
+      if (score>maxScore) maxScore=score;
+      if (score>alpha) alpha=score;
+    }
+    return maxScore;
+  }
   Value doSearch(Board &board, int depth, Value alpha, Value beta, Session &session, int ply = 0)
   {
     if (ply >= MAX_PLY-1) return eval::eval(board);
     Value alphaOrig=alpha;
+    std::fill(std::begin(session.pv[ply]), std::end(session.pv[ply]),
+              Move::none());
     std::fill(std::begin(session.pv[ply + 1]), std::end(session.pv[ply + 1]),
               Move::none());
     if (session.tm.elapsed() >=
@@ -81,8 +103,7 @@ namespace engine
     }
     if (depth == 0)
     {
-      session.nodes++;
-      return eval::eval(board);
+      return qsearch(board, alpha, beta, session, ply+1);
     }
     Value maxScore = -VALUE_INFINITE;
     Movelist moves;
@@ -164,10 +185,10 @@ namespace engine
     chess::Move lastPV[MAX_PLY]{};
     for (int i = 1; i < timecontrol.depth; i++)
     {
-      for (int i=0;i<64;i++)for (int j=0;j<64;j++){
-        movepick::historyHeuristic[i][j]/=2;
+      for (int _=0;_<64;_++)for (int j=0;j<64;j++){
+        movepick::historyHeuristic[_][j]/=2;
         // since MAX_PLY=64
-        session.pv[i][j]=Move::none();
+        session.pv[_][j]=Move::none();
       }
       session.nodes = 0;
       auto board_ = board;
