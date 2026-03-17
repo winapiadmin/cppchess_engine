@@ -9,3 +9,5 @@
 !LICENSE
 !.gitignore
 !CMakeLists.txt
+!.github/
+!.github/**

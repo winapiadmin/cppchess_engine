@@ -115,9 +115,10 @@ jobs:
             -rounds ${{ github.event.inputs.rounds }} \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true file=games.pgn \
-            -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05
+            -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05 | tee results.txt
 
           ./ordo-linux64 -o ratings.txt -- games.pgn
+          tac results.txt | sed -n '/Total Time/,/^--------------------------------------------------$/p' | tac >> ratings.txtv
 
       - name: Upload results
         uses: actions/upload-artifact@v4

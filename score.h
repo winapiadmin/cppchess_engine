@@ -19,48 +19,43 @@
 #ifndef SCORE_H_INCLUDED
 #define SCORE_H_INCLUDED
 
-#include <variant>
-#include <utility>
 #include "eval.h"
+#include <utility>
+#include <variant>
 namespace engine {
 
-    class Score {
-    public:
-        struct Mate {
-            int plies;
-        };
+class Score {
+public:
+  struct Mate {
+    int plies;
+  };
 
-        struct Tablebase {
-            int  plies;
-            bool win;
-        };
+  struct Tablebase {
+    int plies;
+    bool win;
+  };
 
-        struct InternalUnits {
-            int value;
-        };
+  struct InternalUnits {
+    int value;
+  };
 
-        Score() = default;
-        Score(Value v);
+  Score() = default;
+  Score(Value v);
 
-        template<typename T>
-        bool is() const {
-            return std::holds_alternative<T>(score);
-        }
+  template <typename T> bool is() const {
+    return std::holds_alternative<T>(score);
+  }
 
-        template<typename T>
-        T get() const {
-            return std::get<T>(score);
-        }
+  template <typename T> T get() const { return std::get<T>(score); }
 
-        template<typename F>
-        decltype(auto) visit(F &&f) const {
-            return std::visit(std::forward<F>(f), score);
-        }
+  template <typename F> decltype(auto) visit(F &&f) const {
+    return std::visit(std::forward<F>(f), score);
+  }
 
-    private:
-        std::variant<Mate, Tablebase, InternalUnits> score;
-    };
+private:
+  std::variant<Mate, Tablebase, InternalUnits> score;
+};
 
-}
+} // namespace engine
 
-#endif  // #ifndef SCORE_H_INCLUDED
+#endif // #ifndef SCORE_H_INCLUDED

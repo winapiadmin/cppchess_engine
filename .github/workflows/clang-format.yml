@@ -1,0 +1,35 @@
+name: clang-format
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches-ignore:
+      - main
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Run clang-format
+        run: |
+          clang-format -i $(git ls-files '*.cpp' '*.hpp' '*.h' '*.c')
+
+      - name: Commit and push changes
+        run: |
+          if ! git diff --quiet; then
+            git config user.email "actions@github.com"
+            git config user.name "GitHub Actions"
+            git commit -am "Apply clang-format"
+            git push
+          fi
