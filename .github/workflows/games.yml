@@ -119,7 +119,6 @@ jobs:
 
           ./ordo-linux64 -o ratings.txt -- games.pgn
           sed -n '/Results of new vs base/,/^--------------------------------------------------$/p' results.txt >> ratings.txt
-          sed -n '/Results of new vs base/,/^--------------------------------------------------$/p' results.txt >> ratings.txt
           sed -n '/Total Time/,/^--------------------------------------------------$/p' results.txt >> ratings.txt
       - name: Upload results
         uses: actions/upload-artifact@v4
