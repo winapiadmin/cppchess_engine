@@ -4,8 +4,10 @@
 #include "ucioption.h"
 #include <algorithm>
 #include <iostream>
-#include <position.h>
 #include <sstream>
+#include <thread>
+#include <position.h>
+#include <printers.h>
 using namespace engine;
 chess::Position pos;
 OptionsMap engine::options;
@@ -69,7 +71,18 @@ timeman::LimitsType parse_limits(std::istream &is) {
 
   return limits;
 }
-void handleGo(std::istringstream &ss) { search::search(pos, parse_limits(ss)); }
+std::thread searchThread;
+
+void handleGo(std::istringstream &ss) {
+    if (searchThread.joinable()) {
+        search::stop(); 
+        searchThread.join();
+    }
+
+    searchThread = std::thread([ss = std::move(ss)]() mutable {
+        search::search(pos, parse_limits(ss));
+    });
+}
 template <typename... Ts> struct overload : Ts... {
   using Ts::operator()...;
 };
@@ -159,7 +172,7 @@ void engine::loop() {
         break;
       } else if (token == "position") {
         handlePosition(ss);
-        break; // rest belongs to position
+        break;
       } else if (token == "go") {
         handleGo(ss);
         break; // rest belongs to go
@@ -168,8 +181,11 @@ void engine::loop() {
         break;
       } else if (token == "stop") {
         search::stop();
+        if (searchThread.joinable()) searchThread.join();
         break;
       } else if (token == "quit") {
+        search::stop();
+        if (searchThread.joinable()) searchThread.join();
         return;
       } else if (token == "setoption") {
         options.setoption(ss);

@@ -11,7 +11,6 @@ namespace engine {
 TranspositionTable search::tt(16);
 std::atomic<bool> stopSearch{false};
 void search::stop() {
-  tt.clear();
   stopSearch.store(true, std::memory_order_relaxed);
 }
 struct Session {
@@ -72,7 +71,7 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
   uint64_t hash = board.hash();
   Move preferred = Move::none();
   if (TTEntry *entry = search::tt.lookup(hash)) {
-    if (entry->getDepth() >= depth) {
+    if (entry->getDepth() >= depth && ply!=0) {
       Value ttScore = entry->getScore();
       TTFlag flag = entry->getFlag();
 
@@ -116,7 +115,6 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
 
     board.undoMove();
 
-    // ---- ABORT PROPAGATION ----
     if (childScore == VALUE_NONE)
       return VALUE_NONE;
 
@@ -165,6 +163,7 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
 }
 void search::search(const chess::Board &board,
                     const timeman::LimitsType timecontrol) {
+  stopSearch=false;
   static double originalTimeAdjust = -1;
   Session session;
   session.tc = timecontrol;
@@ -195,6 +194,8 @@ void search::search(const chess::Board &board,
     info.timeMs = session.tm.elapsed();
     info.multiPV = 1;
     info.score = score_;
+    TTEntry *entry = tt.lookup(board.hash());
+    if (entry) switch(entry->getFlag()){ case LOWERBOUND: info.bound="lowerbound"; break; case UPPERBOUND: info.bound="upperbound";break;default:break;}
     std::string pv = "";
     for (Move *m = session.pv[0]; *m != Move::none(); m++)
       pv += chess::uci::moveToUci(*m, board.chess960()) + " ";

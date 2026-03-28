@@ -8,7 +8,7 @@ include(FetchContent)
 FetchContent_Declare(
     chesslib
     GIT_REPOSITORY https://github.com/winapiadmin/chesslib.git
-    GIT_TAG maintaince_1
+    GIT_TAG main
 )
 FetchContent_MakeAvailable(chesslib)
 add_executable(engine "main.cpp" "timeman.cpp" "timeman.h" "eval.h" "eval.cpp" "tune.h" "ucioption.h" "tune.cpp" "ucioption.cpp" "tt.h" "tt.cpp" "uci.cpp" "uci.h" "search.h" "search.cpp" "score.h" "score.cpp" "movepick.h" "movepick.cpp")
