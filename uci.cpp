@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <iostream>
 #include <position.h>
+#include <printers.h>
 #include <sstream>
 using namespace engine;
 chess::Position pos;
