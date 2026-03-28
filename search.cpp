@@ -69,7 +69,7 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
   uint64_t hash = board.hash();
   Move preferred = Move::none();
   if (TTEntry *entry = search::tt.lookup(hash)) {
-    if (entry->getDepth() >= depth && ply != 0) {
+    if (entry->getDepth() >= depth) {
       Value ttScore = entry->getScore();
       TTFlag flag = entry->getFlag();
 
