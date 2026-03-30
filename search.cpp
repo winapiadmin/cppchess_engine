@@ -6,6 +6,7 @@
 #include <atomic>
 #include <moves_io.h>
 #include <position.h>
+#include <printers.h>
 using namespace chess;
 namespace engine {
 TranspositionTable search::tt(16);
@@ -26,6 +27,9 @@ void update_pv(Move *pv, Move move, const Move *childPv) {
 }
 Value qsearch(Board &board, Value alpha, Value beta, Session &session,
               int ply = 0) {
+  if (session.tm.elapsed() >= session.tm.optimum() ||
+      stopSearch.load(std::memory_order_relaxed))
+    return VALUE_NONE;
   session.nodes++;
   session.seldepth = std::max(session.seldepth, ply);
   int standPat = eval::eval(board);
@@ -38,8 +42,10 @@ Value qsearch(Board &board, Value alpha, Value beta, Session &session,
   board.legals<MoveGenType::CAPTURE>(moves);
   for (Move move : moves) {
     board.doMove(move);
-    Value score = -qsearch(board, -beta, -alpha, session, ply + 1);
+    Value score = qsearch(board, -beta, -alpha, session, ply + 1);
     board.undoMove();
+    if (score==VALUE_NONE) return VALUE_NONE;
+    score=-score;
     if (score >= beta)
       return score;
     if (score > maxScore)
@@ -95,7 +101,7 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     preferred = Move(entry->getMove());
   }
   if (depth == 0) {
-    return qsearch(board, alpha, beta, session, ply + 1);
+    return qsearch(board, alpha, beta, session, ply);
   }
   Value maxScore = -VALUE_INFINITE;
   Movelist moves;
@@ -109,11 +115,10 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     int R=2+depth/6;
     board.doNullMove();
     Value score=doSearch(board, depth-1-R, -beta, -beta+1, session, ply+1);
-
+    board.undoMove();
     if (score == VALUE_NONE)
       return VALUE_NONE;
     score=-score;
-    board.undoMove();
     if (score>=beta) return beta;
   }
   for (Move move : moves) {
@@ -190,7 +195,7 @@ void search::search(const chess::Board &board,
     Value score_ =
         doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
     if (session.tm.elapsed() >= session.tm.optimum() ||
-        stopSearch.load(std::memory_order_relaxed) || score_ == VALUE_NONE)
+        stopSearch.load(std::memory_order_relaxed) || abs(score_) == VALUE_NONE)
       break;
     InfoFull info{};
     info.depth = i;
