@@ -1,5 +1,6 @@
 #include "score.h"
 #include <cassert>
+#include <cmath>
 namespace engine {
 Score::Score(Value v) {
   assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);
