@@ -105,16 +105,18 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     return board.checkers() ? -MATE(ply) : 0;
   }
   movepick::orderMoves(board, moves, preferred, ply);
-  if (bool useNMP=depth>=3 && !board.checkers() && ply>0){
-    int R=2+depth/6;
+  if (bool useNMP = depth >= 3 && !board.checkers() && ply > 0) {
+    int R = 2 + depth / 6;
     board.doNullMove();
-    Value score=doSearch(board, depth-1-R, -beta, -beta+1, session, ply+1);
+    Value score =
+        doSearch(board, depth - 1 - R, -beta, -beta + 1, session, ply + 1);
 
     if (score == VALUE_NONE)
       return VALUE_NONE;
-    score=-score;
+    score = -score;
     board.undoMove();
-    if (score>=beta) return beta;
+    if (score >= beta)
+      return beta;
   }
   for (Move move : moves) {
     board.doMove(move);
