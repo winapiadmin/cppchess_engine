@@ -44,8 +44,9 @@ Value qsearch(Board &board, Value alpha, Value beta, Session &session,
     board.doMove(move);
     Value score = qsearch(board, -beta, -alpha, session, ply + 1);
     board.undoMove();
-    if (score==VALUE_NONE) return VALUE_NONE;
-    score=-score;
+    if (score == VALUE_NONE)
+      return VALUE_NONE;
+    score = -score;
     if (score >= beta)
       return score;
     if (score > maxScore)
