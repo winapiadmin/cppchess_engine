@@ -27,6 +27,7 @@ void update_pv(Move *pv, Move move, const Move *childPv) {
 Value qsearch(Board &board, Value alpha, Value beta, Session &session,
               int ply = 0) {
   session.nodes++;
+  session.seldepth = std::max(session.seldepth, ply);
   int standPat = eval::eval(board);
   Value maxScore = standPat;
   if (maxScore >= beta)
@@ -104,10 +105,19 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     return board.checkers() ? -MATE(ply) : 0;
   }
   movepick::orderMoves(board, moves, preferred, ply);
+  if (bool useNMP=depth>=3 && !board.checkers() && ply>0){
+    int R=2+depth/6;
+    board.doNullMove();
+    Value score=doSearch(board, depth-1-R, -beta, -beta+1, session, ply+1);
+
+    if (score == VALUE_NONE)
+      return VALUE_NONE;
+    score=-score;
+    board.undoMove();
+    if (score>=beta) return beta;
+  }
   for (Move move : moves) {
-
     board.doMove(move);
-
     Value childScore =
         doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
 
@@ -242,7 +252,7 @@ void search::search(const chess::Board &board,
         info.nodes = 1;
         info.score = 0;
         info.multiPV = 1;
-        info.pv = chess::uci::moveToUci(best, board.chess960());
+        info.pv = std::string(chess::uci::moveToUci(best, board.chess960()));
         report(info);
 
         report(chess::uci::moveToUci(best, board.chess960()));
