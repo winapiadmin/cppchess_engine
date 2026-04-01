@@ -56,7 +56,7 @@ Value qsearch(Board &board, Value alpha, Value beta, Session &session,
   }
   return maxScore;
 }
-Value doSearch(Board &board, int depth, Value alpha, Value beta,
+Value doSearch(Board board, int depth, Value alpha, Value beta,
                Session &session, int ply = 0) {
   if (ply >= MAX_PLY - 1)
     return eval::eval(board);
@@ -118,25 +118,34 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     Value score =
         doSearch(board, depth - 1 - R, -beta, -beta + 1, session, ply + 1);
 
-    if (score == VALUE_NONE)
+    if (score == VALUE_NONE) {
+      board.undoMove();
       return VALUE_NONE;
+    }
     score = -score;
     board.undoMove();
     if (score >= beta)
-      return beta;
+      return score;
   }
-  for (Move move : moves) {
+  for (size_t i = 0; i < moves.size(); ++i) {
+    Move move = moves[i];
+    int reduction = (i >= 3 && depth >= 3 && !board.isCapture(move)) ? 1 : 0;
     board.doMove(move);
-    Value childScore =
-        doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
-
-    board.undoMove();
-
-    if (childScore == VALUE_NONE)
+    Value childScore = doSearch(board, depth - 1 - reduction, -alpha - 1, -alpha, session, ply + 1);
+    if (childScore == VALUE_NONE){
+      board.undoMove();
       return VALUE_NONE;
-
+    }
     Value score = -childScore;
-
+    if (reduction > 0 && score > alpha) {
+      childScore = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+      board.undoMove();
+      if (childScore == VALUE_NONE) return VALUE_NONE;
+      score = -childScore;
+    }
+    else
+      board.undoMove();
+      
     if (score > maxScore) {
       maxScore = score;
       update_pv(session.pv[ply], move, session.pv[ply + 1]);
@@ -194,7 +203,6 @@ void search::search(const chess::Board &board,
         // since MAX_PLY=64
         session.pv[_][j] = Move::none();
       }
-    session.nodes = 0;
     auto board_ = board;
     Value score_ =
         doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);

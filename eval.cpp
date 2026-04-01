@@ -97,11 +97,11 @@ Value eg_king_table[64] = {-74, -35, -18, -18, -11, 15,  4,   -17, -12, 17, 14,
                            -17, -53, -34, -21, -11, -28, -14, -24, -43};
 
 Value *mg_pesto_table[] = {
-    {0},           mg_pawn_table,  mg_knight_table, mg_bishop_table,
+    nullptr,       mg_pawn_table,  mg_knight_table, mg_bishop_table,
     mg_rook_table, mg_queen_table, mg_king_table};
 
 Value *eg_pesto_table[] = {
-    {0},           eg_pawn_table,  eg_knight_table, eg_bishop_table,
+    nullptr,       eg_pawn_table,  eg_knight_table, eg_bishop_table,
     eg_rook_table, eg_queen_table, eg_king_table};
 
 Value eval(const chess::Board &board) {
