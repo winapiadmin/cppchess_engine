@@ -129,49 +129,88 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
   }
   for (size_t i = 0; i < moves.size(); ++i) {
     Move move = moves[i];
-    int reduction = (i >= 3 && depth >= 3 && !board.isCapture(move)) ? 1 : 0;
-    board.doMove(move);
-    Value childScore = doSearch(board, depth - 1 - reduction, -alpha - 1,
-                                -alpha, session, ply + 1);
-    if (childScore == VALUE_NONE) {
-      board.undoMove();
-      return VALUE_NONE;
+
+    bool isCapture = board.isCapture(move);
+    bool givesCheck = board.givesCheck(move)!=CheckType::NO_CHECK;
+
+    // --- LMR reduction ---
+    int reduction = 0;
+    if (i >= 3 && depth >= 3 && !isCapture && !givesCheck) {
+        reduction = 1 + (int)(i / 6) + (depth / 8);
+
+        // history heuristic: good moves get reduced less
+        if (movepick::historyHeuristic[(int)move.from()][(int)move.to()] > 0)
+            reduction--;
+
+        reduction = std::max(0, reduction);
+        reduction = std::min(reduction, depth - 2);
     }
-    Value score = -childScore;
-    if (reduction > 0 && score > alpha) {
-      childScore = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
-      board.undoMove();
-      if (childScore == VALUE_NONE)
-        return VALUE_NONE;
-      score = -childScore;
-    } else
-      board.undoMove();
+
+    board.doMove(move);
+
+    Value score;
+
+    if (i == 0) {
+        // --- First move: full window (PVS root move) ---
+        score = -doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+
+        if (score == VALUE_NONE){
+          board.undoMove();
+          return VALUE_NONE;
+        }
+    } else {
+        // --- Null-window search (PVS + LMR) ---
+        score = doSearch(board,
+                          depth - 1 - reduction,
+                          -alpha - 1, -alpha,
+                          session, ply + 1);
+        if (score == VALUE_NONE) {
+            board.undoMove();
+            return VALUE_NONE;
+        }
+        score=-score;
+        // --- Re-search if it improves alpha ---
+        if (score > alpha) {
+            score = doSearch(board,
+                              depth - 1,
+                              -beta, -alpha,
+                              session, ply + 1);
+                if (score == VALUE_NONE) {
+                board.undoMove();
+                return VALUE_NONE;
+            }
+            score = -score;
+        }
+    }
+
+    board.undoMove();
 
     if (score > maxScore) {
-      maxScore = score;
-      update_pv(session.pv[ply], move, session.pv[ply + 1]);
+        maxScore = score;
+        update_pv(session.pv[ply], move, session.pv[ply + 1]);
     }
 
     if (score > alpha) {
-      alpha = score;
-      if (!board.isCapture(move))
-        movepick::historyHeuristic[(int)move.from()][(int)move.to()] +=
-            depth * depth;
-    }
-    if (alpha >= beta) {
-      if (!board.isCapture(move)) {
-        if (movepick::killerMoves[ply][0] != move) {
-          movepick::killerMoves[ply][1] = movepick::killerMoves[ply][0];
-          movepick::killerMoves[ply][0] = move;
-        }
-      }
+        alpha = score;
 
-      break;
+        if (!isCapture)
+            movepick::historyHeuristic[(int)move.from()][(int)move.to()] += depth * depth;
+    }
+
+    if (alpha >= beta) {
+        // killer moves
+        if (!isCapture) {
+            if (movepick::killerMoves[ply][0] != move) {
+                movepick::killerMoves[ply][1] = movepick::killerMoves[ply][0];
+                movepick::killerMoves[ply][0] = move;
+            }
+        }
+        break;
     }
 
     if (session.tm.elapsed() >= session.tm.optimum() ||
         stopSearch.load(std::memory_order_relaxed))
-      return VALUE_NONE;
+        return VALUE_NONE;
   }
 
   if (maxScore != -VALUE_INFINITE) {
