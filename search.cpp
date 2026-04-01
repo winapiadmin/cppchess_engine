@@ -131,8 +131,9 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     Move move = moves[i];
     int reduction = (i >= 3 && depth >= 3 && !board.isCapture(move)) ? 1 : 0;
     board.doMove(move);
-    Value childScore = doSearch(board, depth - 1 - reduction, -alpha - 1, -alpha, session, ply + 1);
-    if (childScore == VALUE_NONE){
+    Value childScore = doSearch(board, depth - 1 - reduction, -alpha - 1,
+                                -alpha, session, ply + 1);
+    if (childScore == VALUE_NONE) {
       board.undoMove();
       return VALUE_NONE;
     }
@@ -140,12 +141,12 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     if (reduction > 0 && score > alpha) {
       childScore = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
       board.undoMove();
-      if (childScore == VALUE_NONE) return VALUE_NONE;
+      if (childScore == VALUE_NONE)
+        return VALUE_NONE;
       score = -childScore;
-    }
-    else
+    } else
       board.undoMove();
-      
+
     if (score > maxScore) {
       maxScore = score;
       update_pv(session.pv[ply], move, session.pv[ply + 1]);
