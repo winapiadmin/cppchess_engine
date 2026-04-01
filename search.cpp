@@ -131,19 +131,19 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     Move move = moves[i];
 
     bool isCapture = board.isCapture(move);
-    bool givesCheck = board.givesCheck(move)!=CheckType::NO_CHECK;
+    bool givesCheck = board.givesCheck(move) != CheckType::NO_CHECK;
 
     // --- LMR reduction ---
     int reduction = 0;
     if (i >= 3 && depth >= 3 && !isCapture && !givesCheck) {
-        reduction = 1 + (int)(i / 6) + (depth / 8);
+      reduction = 1 + (int)(i / 6) + (depth / 8);
 
-        // history heuristic: good moves get reduced less
-        if (movepick::historyHeuristic[(int)move.from()][(int)move.to()] > 0)
-            reduction--;
+      // history heuristic: good moves get reduced less
+      if (movepick::historyHeuristic[(int)move.from()][(int)move.to()] > 0)
+        reduction--;
 
-        reduction = std::max(0, reduction);
-        reduction = std::min(reduction, depth - 2);
+      reduction = std::max(0, reduction);
+      reduction = std::min(reduction, depth - 2);
     }
 
     board.doMove(move);
@@ -151,66 +151,62 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     Value score;
 
     if (i == 0) {
-        // --- First move: full window (PVS root move) ---
-        score = -doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+      // --- First move: full window (PVS root move) ---
+      score = -doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
 
-        if (score == VALUE_NONE){
+      if (score == VALUE_NONE) {
+        board.undoMove();
+        return VALUE_NONE;
+      }
+    } else {
+      // --- Null-window search (PVS + LMR) ---
+      score = doSearch(board, depth - 1 - reduction, -alpha - 1, -alpha,
+                       session, ply + 1);
+      if (score == VALUE_NONE) {
+        board.undoMove();
+        return VALUE_NONE;
+      }
+      score = -score;
+      // --- Re-search if it improves alpha ---
+      if (score > alpha) {
+        score = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+        if (score == VALUE_NONE) {
           board.undoMove();
           return VALUE_NONE;
         }
-    } else {
-        // --- Null-window search (PVS + LMR) ---
-        score = doSearch(board,
-                          depth - 1 - reduction,
-                          -alpha - 1, -alpha,
-                          session, ply + 1);
-        if (score == VALUE_NONE) {
-            board.undoMove();
-            return VALUE_NONE;
-        }
-        score=-score;
-        // --- Re-search if it improves alpha ---
-        if (score > alpha) {
-            score = doSearch(board,
-                              depth - 1,
-                              -beta, -alpha,
-                              session, ply + 1);
-                if (score == VALUE_NONE) {
-                board.undoMove();
-                return VALUE_NONE;
-            }
-            score = -score;
-        }
+        score = -score;
+      }
     }
 
     board.undoMove();
 
     if (score > maxScore) {
-        maxScore = score;
-        update_pv(session.pv[ply], move, session.pv[ply + 1]);
+      maxScore = score;
+      update_pv(session.pv[ply], move, session.pv[ply + 1]);
     }
 
     if (score > alpha) {
-        alpha = score;
+      alpha = score;
 
-        if (!isCapture)
-            movepick::historyHeuristic[(int)move.from()][(int)move.to()] += depth * depth;
+      if (!isCapture)
+        movepick::historyHeuristic[(int)move.from()][(int)move.to()] +=
+            depth * depth;
     }
 
     if (alpha >= beta) {
-        // killer moves
-        if (!isCapture) {
-            if (movepick::killerMoves[ply][0] != move) {
-                movepick::killerMoves[ply][1] = movepick::killerMoves[ply][0];
-                movepick::killerMoves[ply][0] = move;
-            }
+      // killer moves
+      if (!isCapture) {
+        if (movepick::killerMoves[ply][0] != move) {
+          movepick::killerMoves[ply][1] = movepick::killerMoves[ply][0];
+          movepick::killerMoves[ply][0] = move;
         }
-        break;
+      }
+      break;
     }
 
     if (session.tm.elapsed() >= session.tm.optimum() ||
         stopSearch.load(std::memory_order_relaxed))
-        return VALUE_NONE;
+      return VALUE_NONE;
   }
 
   if (maxScore != -VALUE_INFINITE) {
