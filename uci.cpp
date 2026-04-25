@@ -11,7 +11,12 @@
 using namespace engine;
 chess::Position pos;
 OptionsMap engine::options;
+std::thread searchThread;
 void handlePosition(std::istringstream &is) {
+  if (searchThread.joinable()) {
+    std::cout << "info string In search, do not modify position\n";
+    return;
+  }
   std::string token, fen;
 
   is >> token;
@@ -71,7 +76,6 @@ timeman::LimitsType parse_limits(std::istream &is) {
 
   return limits;
 }
-std::thread searchThread;
 
 void handleGo(std::istringstream &ss) {
   if (searchThread.joinable()) {
@@ -198,4 +202,7 @@ void engine::loop() {
       }
     }
   }
+  search::stop();
+  if (searchThread.joinable())
+    searchThread.join();
 }
