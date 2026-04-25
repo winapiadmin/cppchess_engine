@@ -5,6 +5,7 @@ project(cppchess_engine)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
+set(BUILD_TESTING OFF)
 FetchContent_Declare(
     chesslib
     GIT_REPOSITORY https://github.com/winapiadmin/chesslib.git

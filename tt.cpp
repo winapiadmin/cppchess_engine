@@ -68,7 +68,7 @@ TTEntry *TranspositionTable::lookup(uint64_t hash) {
   TTEntry &e0 = table[index], &e1 = table[index + 1];
   // Check the entries
   for (TTEntry *e : {&e0, &e1}) {
-    if (e->key == hash)
+    if (e->key == hash && e->getGeneration() == this->time)
       return e;
   }
   return nullptr;

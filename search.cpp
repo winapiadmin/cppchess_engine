@@ -6,14 +6,12 @@
 #include <atomic>
 #include <moves_io.h>
 #include <position.h>
+#include <printers.h>
 using namespace chess;
 namespace engine {
 TranspositionTable search::tt(16);
 std::atomic<bool> stopSearch{false};
-void search::stop() {
-  tt.clear();
-  stopSearch.store(true, std::memory_order_relaxed);
-}
+void search::stop() { stopSearch.store(true, std::memory_order_relaxed); }
 struct Session {
   timeman::TimeManagement tm;
   timeman::LimitsType tc;
@@ -29,7 +27,11 @@ void update_pv(Move *pv, Move move, const Move *childPv) {
 }
 Value qsearch(Board &board, Value alpha, Value beta, Session &session,
               int ply = 0) {
+  if (session.tm.elapsed() >= session.tm.optimum() ||
+      stopSearch.load(std::memory_order_relaxed))
+    return VALUE_NONE;
   session.nodes++;
+  session.seldepth = std::max(session.seldepth, ply);
   int standPat = eval::eval(board);
   Value maxScore = standPat;
   if (maxScore >= beta)
@@ -40,8 +42,11 @@ Value qsearch(Board &board, Value alpha, Value beta, Session &session,
   board.legals<MoveGenType::CAPTURE>(moves);
   for (Move move : moves) {
     board.doMove(move);
-    Value score = -qsearch(board, -beta, -alpha, session, ply + 1);
+    Value score = qsearch(board, -beta, -alpha, session, ply + 1);
     board.undoMove();
+    if (score == VALUE_NONE)
+      return VALUE_NONE;
+    score = -score;
     if (score >= beta)
       return score;
     if (score > maxScore)
@@ -51,7 +56,7 @@ Value qsearch(Board &board, Value alpha, Value beta, Session &session,
   }
   return maxScore;
 }
-Value doSearch(Board &board, int depth, Value alpha, Value beta,
+Value doSearch(Board board, int depth, Value alpha, Value beta,
                Session &session, int ply = 0) {
   if (ply >= MAX_PLY - 1)
     return eval::eval(board);
@@ -97,7 +102,7 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     preferred = Move(entry->getMove());
   }
   if (depth == 0) {
-    return qsearch(board, alpha, beta, session, ply + 1);
+    return qsearch(board, alpha, beta, session, ply);
   }
   Value maxScore = -VALUE_INFINITE;
   Movelist moves;
@@ -107,20 +112,73 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
     return board.checkers() ? -MATE(ply) : 0;
   }
   movepick::orderMoves(board, moves, preferred, ply);
-  for (Move move : moves) {
+  if (bool useNMP = depth >= 3 && !board.checkers() && ply > 0) {
+    int R = 2 + depth / 6;
+    board.doNullMove();
+    Value score =
+        doSearch(board, depth - 1 - R, -beta, -beta + 1, session, ply + 1);
+
+    if (score == VALUE_NONE) {
+      board.undoMove();
+      return VALUE_NONE;
+    }
+    score = -score;
+    board.undoMove();
+    if (score >= beta)
+      return score;
+  }
+  for (size_t i = 0; i < moves.size(); ++i) {
+    Move move = moves[i];
+
+    bool isCapture = board.isCapture(move);
+    bool givesCheck = board.givesCheck(move) != CheckType::NO_CHECK;
+
+    // --- LMR reduction ---
+    int reduction = 0;
+    if (i >= 3 && depth >= 3 && !isCapture && !givesCheck) {
+      reduction = 1 + (int)(i / 6) + (depth / 8);
+
+      // history heuristic: good moves get reduced less
+      if (movepick::historyHeuristic[(int)move.from()][(int)move.to()] > 0)
+        reduction--;
+
+      reduction = std::max(0, reduction);
+      reduction = std::min(reduction, depth - 2);
+    }
 
     board.doMove(move);
 
-    Value childScore =
-        doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+    Value score;
+
+    if (i == 0) {
+      // --- First move: full window (PVS root move) ---
+      score = -doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+
+      if (score == VALUE_NONE) {
+        board.undoMove();
+        return VALUE_NONE;
+      }
+    } else {
+      // --- Null-window search (PVS + LMR) ---
+      score = doSearch(board, depth - 1 - reduction, -alpha - 1, -alpha,
+                       session, ply + 1);
+      if (score == VALUE_NONE) {
+        board.undoMove();
+        return VALUE_NONE;
+      }
+      score = -score;
+      // --- Re-search if it improves alpha ---
+      if (score > alpha) {
+        score = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+        if (score == VALUE_NONE) {
+          board.undoMove();
+          return VALUE_NONE;
+        }
+        score = -score;
+      }
+    }
 
     board.undoMove();
-
-    // ---- ABORT PROPAGATION ----
-    if (childScore == VALUE_NONE)
-      return VALUE_NONE;
-
-    Value score = -childScore;
 
     if (score > maxScore) {
       maxScore = score;
@@ -129,18 +187,20 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
 
     if (score > alpha) {
       alpha = score;
-      if (!board.isCapture(move))
+
+      if (!isCapture)
         movepick::historyHeuristic[(int)move.from()][(int)move.to()] +=
             depth * depth;
     }
+
     if (alpha >= beta) {
-      if (!board.isCapture(move)) {
+      // killer moves
+      if (!isCapture) {
         if (movepick::killerMoves[ply][0] != move) {
           movepick::killerMoves[ply][1] = movepick::killerMoves[ply][0];
           movepick::killerMoves[ply][0] = move;
         }
       }
-
       break;
     }
 
@@ -165,6 +225,7 @@ Value doSearch(Board &board, int depth, Value alpha, Value beta,
 }
 void search::search(const chess::Board &board,
                     const timeman::LimitsType timecontrol) {
+  stopSearch = false;
   static double originalTimeAdjust = -1;
   Session session;
   session.tc = timecontrol;
@@ -178,12 +239,11 @@ void search::search(const chess::Board &board,
         // since MAX_PLY=64
         session.pv[_][j] = Move::none();
       }
-    session.nodes = 0;
     auto board_ = board;
     Value score_ =
         doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
     if (session.tm.elapsed() >= session.tm.optimum() ||
-        stopSearch.load(std::memory_order_relaxed) || score_ == VALUE_NONE)
+        stopSearch.load(std::memory_order_relaxed) || abs(score_) == VALUE_NONE)
       break;
     InfoFull info{};
     info.depth = i;
@@ -195,6 +255,18 @@ void search::search(const chess::Board &board,
     info.timeMs = session.tm.elapsed();
     info.multiPV = 1;
     info.score = score_;
+    TTEntry *entry = tt.lookup(board.hash());
+    if (entry)
+      switch (entry->getFlag()) {
+      case LOWERBOUND:
+        info.bound = "lowerbound";
+        break;
+      case UPPERBOUND:
+        info.bound = "upperbound";
+        break;
+      default:
+        break;
+      }
     std::string pv = "";
     for (Move *m = session.pv[0]; *m != Move::none(); m++)
       pv += chess::uci::moveToUci(*m, board.chess960()) + " ";
@@ -233,7 +305,7 @@ void search::search(const chess::Board &board,
         info.nodes = 1;
         info.score = 0;
         info.multiPV = 1;
-        info.pv = chess::uci::moveToUci(best, board.chess960());
+        info.pv = std::string(chess::uci::moveToUci(best, board.chess960()));
         report(info);
 
         report(chess::uci::moveToUci(best, board.chess960()));

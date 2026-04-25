@@ -37,8 +37,8 @@ struct TTEntry {
                                        << GEN_SHIFT;
 
   // getters
-  inline uint16_t getScore() const noexcept {
-    return static_cast<uint16_t>((pack & SCORE_MASK) >> SCORE_SHIFT);
+  inline int16_t getScore() const noexcept {
+    return static_cast<int16_t>((pack & SCORE_MASK) >> SCORE_SHIFT);
   }
 
   inline uint8_t getDepth() const noexcept {
