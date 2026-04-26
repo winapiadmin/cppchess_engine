@@ -12,6 +12,7 @@ namespace engine {
 TranspositionTable search::tt(16);
 std::atomic<bool> stopSearch{false};
 void search::stop() { stopSearch.store(true, std::memory_order_relaxed); }
+bool search::isStopped() { return stopSearch; }
 struct Session {
   timeman::TimeManagement tm;
   timeman::LimitsType tc;

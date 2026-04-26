@@ -1,13 +1,11 @@
 #include "eval.h"
-#include <cstring>
+#include "tune.h"
 #include <position.h>
-#include <vector>
 using namespace chess;
 using namespace engine::eval;
 namespace engine::eval {
-constexpr Value PawnValue = 100, KnightValue = 325, BishopValue = 350,
-                RookValue = 500, QueenValue = 900;
-
+Value PawnValue = 100, KnightValue = 325, BishopValue = 350, RookValue = 500,
+      QueenValue = 900;
 Value mg_pawn_table[64] = {
     0,   0,  0,   0,   0,   0,  0,  0,   98,  134, 61, 95,  68, 126, 34, -11,
     -6,  7,  26,  31,  65,  56, 25, -20, -14, 13,  6,  21,  23, 12,  17, -23,
@@ -103,7 +101,7 @@ Value *mg_pesto_table[] = {nullptr,         mg_pawn_table, mg_knight_table,
 Value *eg_pesto_table[] = {nullptr,         eg_pawn_table, eg_knight_table,
                            eg_bishop_table, eg_rook_table, eg_queen_table,
                            eg_king_table};
-
+// tuning slop here
 Value eval(const chess::Board &board) {
   int pieceCount[10] = {
       board.count<PAWN, WHITE>(),   board.count<KNIGHT, WHITE>(),
@@ -124,15 +122,12 @@ Value eval(const chess::Board &board) {
   constexpr int QueenPhase = 4;
   constexpr int TotalPhase =
       KnightPhase * 4 + BishopPhase * 4 + RookPhase * 4 + QueenPhase * 2;
-
   int phase = (pieceCount[1] + pieceCount[6]) * KnightPhase +
               (pieceCount[2] + pieceCount[7]) * BishopPhase +
               (pieceCount[3] + pieceCount[8]) * RookPhase +
               (pieceCount[4] + pieceCount[9]) * QueenPhase;
-
   phase = (phase * 256 + TotalPhase / 2) / TotalPhase;
   const int sign = board.sideToMove() == chess::Color::WHITE ? 1 : -1;
-
   int mgScore = material;
   int egScore = material;
   {

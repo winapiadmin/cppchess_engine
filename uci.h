@@ -34,4 +34,5 @@ void report(std::string_view bestmove);
 void loop();
 class OptionsMap;
 extern OptionsMap options;
+void stop();
 } // namespace engine

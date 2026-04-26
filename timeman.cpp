@@ -24,10 +24,12 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply,
   // If we have no time, we don't need to fully initialize TM.
   // startTime is used by movetime and useNodesTime is used in elapsed calls.
   startTime = limits.startTime;
-
-  if (limits.time[us] == 0)
+  if (limits.movetime != 0 && limits.time[us] == 0) {
+    optimumTime = maximumTime = TimePoint(limits.movetime);
     return;
-
+  }
+  if (limits.time[us] == 0 && limits.movetime == 0)
+    return;
   // optScale is a percentage of available time to use for the current move.
   // maxScale is a multiplier applied to optimumTime.
   double optScale, maxScale;
@@ -45,10 +47,10 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply,
     centiMTG = int(time * 5.051);
 
   // Make sure timeLeft is > 0 since we may use it as a divisor
-  TimePoint timeLeft = std::max(
-      TimePoint(1), limits.time[us] + (limits.inc[us] * (centiMTG - 100) -
-                                       moveOverhead * (200 + centiMTG)) /
-                                          100);
+  TimePoint timeLeft =
+      std::max(TimePoint(1), time + (limits.inc[us] * (centiMTG - 100) -
+                                     moveOverhead * (200 + centiMTG)) /
+                                        100);
 
   // x basetime (+ z increment)
   // If there is a healthy increment, timeLeft can exceed the actual available
@@ -67,7 +69,7 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply,
 
     optScale =
         std::min(0.0121431 + std::pow(ply + 2.94693, 0.461073) * optConstant,
-                 0.213035 * limits.time[us] / timeLeft) *
+                 0.213035 * time / timeLeft) *
         originalTimeAdjust;
 
     maxScale = std::min(6.67704, maxConstant + ply / 11.9847);
@@ -76,13 +78,13 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply,
   // x moves in y seconds (+ z increment)
   else {
     optScale = std::min((0.88 + ply / 116.4) / (centiMTG / 100.0),
-                        0.88 * limits.time[us] / timeLeft);
+                        0.88 * time / timeLeft);
     maxScale = 1.3 + 0.11 * (centiMTG / 100.0);
   }
 
   // Limit the maximum possible time for this move
   optimumTime = TimePoint(optScale * timeLeft);
-  maximumTime = TimePoint(std::min(0.825179 * limits.time[us] - moveOverhead,
+  maximumTime = TimePoint(std::min(0.825179 * time - moveOverhead,
                                    maxScale * optimumTime)) -
                 10;
 }

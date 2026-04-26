@@ -9,5 +9,6 @@ struct LimitsType;
 namespace engine::search {
 void stop();
 void search(const chess::Board &, const timeman::LimitsType);
+bool isStopped();
 extern engine::TranspositionTable tt;
 } // namespace engine::search

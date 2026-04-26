@@ -60,7 +60,11 @@ void Tune::make_option(OptionsMap *opts, const string &n, int v,
   LastOption = &((*opts)[n]);
 
   // Print formatted parameters, ready to be copy-pasted in Fishtest
-  std::cout << n << ","                                 //
+  std::cout << n << "," //
+#ifdef OPENBENCH_SUPPORT
+                        // or OpenBench
+            << "int" << ","
+#endif
             << v << ","                                 //
             << r(v).first << ","                        //
             << r(v).second << ","                       //

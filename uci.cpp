@@ -12,11 +12,15 @@ using namespace engine;
 chess::Position pos;
 OptionsMap engine::options;
 std::thread searchThread;
-void handlePosition(std::istringstream &is) {
+void engine::stop() {
+  search::stop();
   if (searchThread.joinable()) {
-    std::cout << "info string In search, do not modify position\n";
-    return;
+    search::stop();
+    searchThread.join();
   }
+}
+void handlePosition(std::istringstream &is) {
+  stop();
   std::string token, fen;
 
   is >> token;
@@ -72,19 +76,16 @@ timeman::LimitsType parse_limits(std::istream &is) {
       limits.infinite = 1;
     else if (token == "ponder")
       ;
-  // std::cerr << "Pondering not supported!" << std::endl;
 
   return limits;
 }
 
 void handleGo(std::istringstream &ss) {
-  if (searchThread.joinable()) {
-    search::stop();
-    searchThread.join();
-  }
+  stop();
+  chess::Position copy = pos;
 
-  searchThread = std::thread([ss = std::move(ss)]() mutable {
-    search::search(pos, parse_limits(ss));
+  searchThread = std::thread([copy, ss = std::move(ss)]() mutable {
+    search::search(copy, parse_limits(ss));
   });
 }
 template <typename... Ts> struct overload : Ts... {
@@ -158,21 +159,20 @@ void engine::report(std::string_view bestmove) {
 void engine::loop() {
   std::string line;
   pos.setFen(pos.START_FEN);
-  std::cout << "cppchess_engine version " << BUILD_VERSION << '\n';
+
   while (std::getline(std::cin, line)) {
     std::istringstream ss(line);
     std::string token;
+    stop();
     while (ss >> token) {
       if (token == "uci") {
         std::cout << "id name cppchess_engine\n";
         std::cout << "id author winapiadmin\n";
         std::cout << options << '\n';
         std::cout << "uciok\n";
-        std::cout.flush();
         break;
       } else if (token == "isready") {
         std::cout << "readyok\n";
-        std::cout.flush();
         break;
       } else if (token == "position") {
         handlePosition(ss);
@@ -184,25 +184,17 @@ void engine::loop() {
         search::tt.clear();
         break;
       } else if (token == "stop") {
-        search::stop();
-        if (searchThread.joinable())
-          searchThread.join();
         break;
       } else if (token == "quit") {
-        search::stop();
-        if (searchThread.joinable())
-          searchThread.join();
         return;
       } else if (token == "setoption") {
         options.setoption(ss);
         break;
-      } else if (token == "visualize") {
+      } else if (token == "visualize" || token == "d") {
         std::cout << pos << std::endl;
         break;
       }
     }
   }
-  search::stop();
-  if (searchThread.joinable())
-    searchThread.join();
+  stop();
 }
