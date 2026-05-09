@@ -7,6 +7,7 @@
 #include <moves_io.h>
 #include <position.h>
 #include <printers.h>
+#include <iostream>
 using namespace chess;
 namespace engine {
 TranspositionTable search::tt(16);
@@ -20,20 +21,68 @@ struct Session {
   uint64_t nodes = 0;
   chess::Move pv[MAX_PLY][MAX_PLY];
 };
+namespace { // SF
 void update_pv(Move *pv, Move move, const Move *childPv) {
 
   for (*pv++ = move; childPv && *childPv != Move::none();)
     *pv++ = *childPv++;
   *pv = Move::none();
 }
+// Adjusts a mate or TB score from "plies to mate from the root" to
+// "plies to mate from the current position". Standard scores are unchanged.
+// The function is called before storing a value in the transposition table.
+Value value_to_tt(Value v, int ply) { return is_win(v) ? v + ply : is_loss(v) ? v - ply : v; }
+
+
+// Inverse of value_to_tt(): it adjusts a mate or TB score from the transposition
+// table (which refers to the plies to mate/be mated from current position) to
+// "plies to mate/be mated (TB win/loss) from the root". However, to avoid
+// potentially false mate or TB scores related to the 50 moves rule and the
+// graph history interaction, we return the highest non-TB score instead.
+Value value_from_tt(Value v, int ply, int r50c) {
+
+    if (!is_valid(v))
+        return VALUE_NONE;
+
+    // handle TB win or better
+    if (is_win(v))
+    {
+        // Downgrade a potentially false mate score
+        if (v >= VALUE_MATE_IN_MAX_PLY && VALUE_MATE - v > 100 - r50c)
+            return VALUE_TB_WIN_IN_MAX_PLY - 1;
+
+        // Downgrade a potentially false TB score.
+        if (VALUE_TB - v > 100 - r50c)
+            return VALUE_TB_WIN_IN_MAX_PLY - 1;
+
+        return v - ply;
+    }
+
+    // handle TB loss or worse
+    if (is_loss(v))
+    {
+        // Downgrade a potentially false mate score.
+        if (v <= VALUE_MATED_IN_MAX_PLY && VALUE_MATE + v > 100 - r50c)
+            return VALUE_TB_LOSS_IN_MAX_PLY + 1;
+
+        // Downgrade a potentially false TB score.
+        if (VALUE_TB + v > 100 - r50c)
+            return VALUE_TB_LOSS_IN_MAX_PLY + 1;
+
+        return v + ply;
+    }
+
+    return v;
+}
+}
 Value qsearch(Board &board, Value alpha, Value beta, Session &session,
               int ply = 0) {
-  if (session.tm.elapsed() >= session.tm.optimum() ||
-      stopSearch.load(std::memory_order_relaxed))
-    return VALUE_NONE;
   session.nodes++;
   session.seldepth = std::max(session.seldepth, ply);
   int standPat = eval::eval(board);
+  if (session.tm.elapsed() >= session.tm.optimum() ||
+      stopSearch.load(std::memory_order_relaxed))
+    return standPat;
   Value maxScore = standPat;
   if (maxScore >= beta)
     return maxScore;
@@ -57,19 +106,25 @@ Value qsearch(Board &board, Value alpha, Value beta, Session &session,
   }
   return maxScore;
 }
-Value doSearch(Board board, int depth, Value alpha, Value beta,
+Value doSearch(Board &board, int depth, Value alpha, Value beta,
                Session &session, int ply = 0) {
+  // TLE or exceeded depth limit
   if (ply >= MAX_PLY - 1)
     return eval::eval(board);
+  if (depth <= 0) {
+    session.nodes++;
+    return qsearch(board, alpha, beta, session, ply);
+  }
+  if (session.tm.elapsed() >= session.tm.optimum() ||
+      stopSearch.load(std::memory_order_relaxed))
+    return qsearch(board, alpha, beta, session, ply);
   Value alphaOrig = alpha;
+  // Reset PV
   std::fill(std::begin(session.pv[ply]), std::end(session.pv[ply]),
             Move::none());
   std::fill(std::begin(session.pv[ply + 1]), std::end(session.pv[ply + 1]),
             Move::none());
-  if (session.tm.elapsed() >= session.tm.optimum() ||
-      stopSearch.load(std::memory_order_relaxed))
-    return VALUE_NONE;
-  if (board.is_draw(3)) {
+  if (board.is_draw(3)||board.is_insufficient_material()) {
     session.nodes++;
     session.pv[ply][0] = Move::none();
     return 0;
@@ -79,7 +134,7 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
   Move preferred = Move::none();
   if (TTEntry *entry = search::tt.lookup(hash)) {
     if (entry->getDepth() >= depth) {
-      Value ttScore = entry->getScore();
+      Value ttScore = value_from_tt(entry->getScore(), ply, board.rule50_count());
       TTFlag flag = entry->getFlag();
 
       if (flag == TTFlag::EXACT) {
@@ -102,9 +157,6 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     }
     preferred = Move(entry->getMove());
   }
-  if (depth == 0) {
-    return qsearch(board, alpha, beta, session, ply);
-  }
   Value maxScore = -VALUE_INFINITE;
   Movelist moves;
   board.legals(moves);
@@ -115,14 +167,11 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
   movepick::orderMoves(board, moves, preferred, ply);
   if (bool useNMP = depth >= 3 && !board.checkers() && ply > 0) {
     int R = 2 + depth / 6;
+    uint64_t hash_=board.hash();
     board.doNullMove();
     Value score =
         doSearch(board, depth - 1 - R, -beta, -beta + 1, session, ply + 1);
 
-    if (score == VALUE_NONE) {
-      board.undoMove();
-      return VALUE_NONE;
-    }
     score = -score;
     board.undoMove();
     if (score >= beta)
@@ -152,14 +201,17 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     Value score;
 
     if (i == 0) {
+      uint64_t hash_=board.hash();
       // --- First move: full window (PVS root move) ---
-      score = -doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
+      score = doSearch(board, depth - 1, -beta, -alpha, session, ply + 1);
 
       if (score == VALUE_NONE) {
         board.undoMove();
         return VALUE_NONE;
       }
+      score=-score;
     } else {
+      uint64_t hash_=board.hash();
       // --- Null-window search (PVS + LMR) ---
       score = doSearch(board, depth - 1 - reduction, -alpha - 1, -alpha,
                        session, ply + 1);
@@ -180,7 +232,6 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     }
 
     board.undoMove();
-
     if (score > maxScore) {
       maxScore = score;
       update_pv(session.pv[ply], move, session.pv[ply + 1]);
@@ -207,7 +258,7 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
 
     if (session.tm.elapsed() >= session.tm.optimum() ||
         stopSearch.load(std::memory_order_relaxed))
-      return VALUE_NONE;
+      return maxScore;
   }
 
   if (maxScore != -VALUE_INFINITE) {
@@ -220,7 +271,7 @@ Value doSearch(Board board, int depth, Value alpha, Value beta,
     else
       flag = TTFlag::EXACT;
 
-    search::tt.store(hash, session.pv[ply][0], maxScore, depth, flag);
+    search::tt.store(hash, session.pv[ply][0], value_to_tt(maxScore, ply), depth, flag);
   }
   return maxScore;
 }
@@ -244,7 +295,7 @@ void search::search(const chess::Board &board,
     Value score_ =
         doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
     if (session.tm.elapsed() >= session.tm.optimum() ||
-        stopSearch.load(std::memory_order_relaxed) || abs(score_) == VALUE_NONE)
+        stopSearch.load(std::memory_order_relaxed) || score_ == VALUE_NONE)
       break;
     InfoFull info{};
     info.depth = i;
