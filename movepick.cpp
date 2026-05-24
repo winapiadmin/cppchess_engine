@@ -1,14 +1,13 @@
 #include "movepick.h"
 #include "eval.h"
+#include "search.h"
 #include <algorithm>
-#include <position.h>
 using namespace chess;
 using engine::eval::piece_value;
 namespace engine::movepick {
-Value historyHeuristic[SQUARE_NB][SQUARE_NB]{};
-Move killerMoves[256][2];
+
 void orderMoves(chess::Board &board, chess::Movelist &moves, chess::Move ttMove,
-                int ply) {
+                int ply, const engine::search::Session& session) {
   std::vector<std::pair<chess::Move, Value>> scoredMoves;
   scoredMoves.reserve(moves.size());
 
@@ -23,12 +22,12 @@ void orderMoves(chess::Board &board, chess::Movelist &moves, chess::Move ttMove,
                    : piece_value(PAWN)) *
                   10 -
               piece_value(board.at<PieceType>(move.from()));
-    else if (move == killerMoves[ply][0])
+    else if (move == session.killerMoves[ply][0])
       score = 8500;
-    else if (move == killerMoves[ply][1])
+    else if (move == session.killerMoves[ply][1])
       score = 8000;
     else
-      score = historyHeuristic[move.from()][move.to()];
+      score = session.historyHeuristic[move.from()][move.to()];
 
     scoredMoves.emplace_back(move, score);
   }

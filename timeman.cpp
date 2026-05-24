@@ -28,8 +28,10 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply,
     optimumTime = maximumTime = TimePoint(limits.movetime);
     return;
   }
-  if (limits.time[us] == 0 && limits.movetime == 0)
+  if (limits.time[us] == 0 && limits.movetime == 0) {
+    optimumTime = maximumTime = INFINITE_TIME;
     return;
+  }
   // optScale is a percentage of available time to use for the current move.
   // maxScale is a multiplier applied to optimumTime.
   double optScale, maxScale;

@@ -128,27 +128,18 @@ public:
   ~TranspositionTable() { delete[] table; }
 
   void resize(int sizeInMB) {
-    TTEntry *old_table = table;
-    int old_size = size;
+    int new_size = sizeInMB * 1048576 / sizeof(TTEntry);
+    if (new_size % 2 != 0)
+      new_size--;
 
-    size = sizeInMB * 1048576 / sizeof(TTEntry);
-    if (size % 2 != 0)
-      size--;
-    buckets = size / 2;
-
-    TTEntry *new_table = new (std::nothrow) TTEntry[size];
+    TTEntry *new_table = new (std::nothrow) TTEntry[new_size]();
     if (!new_table) {
-      // Restore old values on failure
-      table = old_table;
-      size = old_size;
-      buckets = old_size / 2;
       throw std::bad_alloc();
     }
 
-    std::memcpy(new_table, old_table,
-                sizeof(TTEntry) * std::min(size, old_size));
-    delete[] old_table;
+    delete[] table;
     table = new_table;
+    size = new_size;
     buckets = size / 2;
   }
 
