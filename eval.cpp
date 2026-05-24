@@ -1,7 +1,7 @@
 #include "eval.h"
 #include "tune.h"
-#include <position.h>
 #include <iostream>
+#include <position.h>
 using namespace chess;
 using namespace engine::eval;
 
@@ -114,7 +114,7 @@ Value mgMobility[] = {
 };
 
 Value egMobility[] = {0, 0, 2, 5, 3, 2, 0};
-Value spaceWeight=28;
+Value spaceWeight = 28;
 // tuning slop here
 Value eval(const chess::Board &board) {
   constexpr int KnightPhase = 1;
@@ -128,10 +128,10 @@ Value eval(const chess::Board &board) {
   int egScore = 0;
   int phase = 0;
   {
-    mgScore=egScore=board.sideToMove() == WHITE?spaceWeight:0;
-    Bitboard occ = board.occ(), occ2=occ;
+    mgScore = egScore = board.sideToMove() == WHITE ? spaceWeight : 0;
+    Bitboard occ = board.occ(), occ2 = occ;
     while (occ) {
-      Square sq = (Square)pop_lsb(occ),_sq=sq;
+      Square sq = (Square)pop_lsb(occ), _sq = sq;
       auto p = board.at(sq);
       int _sign = 1;
       if (color_of(p) == BLACK) {
@@ -296,12 +296,14 @@ Value eval(const chess::Board &board) {
     int endF = std::min(7, (int)kf + 1);
     for (int adjF = startF; adjF <= endF; adjF++) {
       if (c == WHITE) {
-        for (int r = rank_of(kingSq) + 1; r <= std::min(7, rank_of(kingSq) + 3); r++) {
+        for (int r = rank_of(kingSq) + 1; r <= std::min(7, rank_of(kingSq) + 3);
+             r++) {
           if (pawns & (Bitboard(1) << make_sq((File)adjF, (Rank)r)))
             shelter += 10 - (r - rank_of(kingSq) - 1) * 3;
         }
       } else {
-        for (int r = rank_of(kingSq) - 1; r >= std::max(0, rank_of(kingSq) - 3); r--) {
+        for (int r = rank_of(kingSq) - 1; r >= std::max(0, rank_of(kingSq) - 3);
+             r--) {
           if (pawns & (Bitboard(1) << make_sq((File)adjF, (Rank)r)))
             shelter += 10 - (rank_of(kingSq) - r - 1) * 3;
         }
@@ -317,9 +319,8 @@ Value eval(const chess::Board &board) {
   return finalScore;
 }
 Value piece_value(PieceType pt) {
-  Value pieces[] = {0, PawnValue, KnightValue,
-                    BishopValue, RookValue, QueenValue,
-                    KingValue};
+  Value pieces[] = {0,         PawnValue,  KnightValue, BishopValue,
+                    RookValue, QueenValue, KingValue};
   return pieces[pt];
 }
 } // namespace engine::eval

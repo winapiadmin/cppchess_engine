@@ -354,28 +354,29 @@ void search::search(const chess::Board &board,
 
     // Aspiration windows
     if (i >= 3 && prevScore != VALUE_NONE) {
-        Value delta = Value(17);
-        Value alpha = std::max(prevScore - delta, -VALUE_INFINITE);
-        Value beta = std::min(prevScore + delta, VALUE_INFINITE);
+      Value delta = Value(17);
+      Value alpha = std::max(prevScore - delta, -VALUE_INFINITE);
+      Value beta = std::min(prevScore + delta, VALUE_INFINITE);
 
-        score_ = doSearch(board_, i, alpha, beta, session);
+      score_ = doSearch(board_, i, alpha, beta, session);
 
-        if (score_ != VALUE_NONE) {
-            if (score_ <= alpha) {
-                alpha = -VALUE_INFINITE;
-                score_ = doSearch(board_, i, alpha, beta, session);
-            }
-            if (score_ >= beta && score_ != VALUE_NONE) {
-                beta = VALUE_INFINITE;
-                score_ = doSearch(board_, i, alpha, beta, session);
-            }
-            if ((score_ <= alpha || score_ >= beta) && score_ != VALUE_NONE)
-                score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
-        } else {
-            score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
+      if (score_ != VALUE_NONE) {
+        if (score_ <= alpha) {
+          alpha = -VALUE_INFINITE;
+          score_ = doSearch(board_, i, alpha, beta, session);
         }
-    } else {
+        if (score_ >= beta && score_ != VALUE_NONE) {
+          beta = VALUE_INFINITE;
+          score_ = doSearch(board_, i, alpha, beta, session);
+        }
+        if ((score_ <= alpha || score_ >= beta) && score_ != VALUE_NONE)
+          score_ =
+              doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
+      } else {
         score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
+      }
+    } else {
+      score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
     }
     prevScore = score_;
     if (session.tm.elapsed() >= session.tm.optimum() ||

@@ -7,7 +7,7 @@ using engine::eval::piece_value;
 namespace engine::movepick {
 
 void orderMoves(chess::Board &board, chess::Movelist &moves, chess::Move ttMove,
-                int ply, const engine::search::Session& session) {
+                int ply, const engine::search::Session &session) {
   std::vector<std::pair<chess::Move, Value>> scoredMoves;
   scoredMoves.reserve(moves.size());
 
