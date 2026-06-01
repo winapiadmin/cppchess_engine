@@ -33,7 +33,7 @@ void handlePosition(std::istringstream &is) {
       fen += token + " ";
   else
     return;
-  pos.setFen(fen);
+  pos.setFEN(fen);
 
   while (is >> token) {
     pos.push_uci(token);
