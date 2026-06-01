@@ -123,12 +123,12 @@ Value eval(const chess::Board &board) {
   constexpr int QueenPhase = 4;
   constexpr int TotalPhase =
       KnightPhase * 4 + BishopPhase * 4 + RookPhase * 4 + QueenPhase * 2;
-  const int sign = board.sideToMove() == chess::Color::WHITE ? 1 : -1;
+  const int sign = board.side_to_move() == WHITE ? 1 : -1;
   int mgScore = 0;
   int egScore = 0;
   int phase = 0;
   {
-    mgScore = egScore = board.sideToMove() == WHITE ? spaceWeight : 0;
+    mgScore = egScore = board.side_to_move() == WHITE ? spaceWeight : 0;
     Bitboard occ = board.occ(), occ2 = occ;
     while (occ) {
       Square sq = (Square)pop_lsb(occ), _sq = sq;
