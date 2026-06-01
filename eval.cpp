@@ -127,7 +127,7 @@ Value eval(const chess::Board &board) {
               (pieceCount[3] + pieceCount[8]) * RookPhase +
               (pieceCount[4] + pieceCount[9]) * QueenPhase;
   phase = (phase * 256 + TotalPhase / 2) / TotalPhase;
-  const int sign = board.sideToMove() == chess::Color::WHITE ? 1 : -1;
+  const int sign = board.side_to_move() == chess::Color::WHITE ? 1 : -1;
   int mgScore = material;
   int egScore = material;
   {
