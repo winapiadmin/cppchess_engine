@@ -17,7 +17,7 @@ void orderMoves(chess::Board &board, chess::Movelist &moves, chess::Move ttMove,
     if (move == ttMove)
       score = 10000;
     else if (board.isCapture(move))
-      score = ((move.typeOf() & EN_PASSANT) == 0
+      score = ((move.type_of() & EN_PASSANT) == 0
                    ? piece_value(board.at<PieceType>(move.to()))
                    : piece_value(PAWN)) *
                   10 -
