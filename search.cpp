@@ -282,7 +282,7 @@ void search::search(const chess::Board &board,
   static double originalTimeAdjust = -1;
   Session session;
   session.tc = timecontrol;
-  session.tm.init(session.tc, board.sideToMove(), 0, originalTimeAdjust);
+  session.tm.init(session.tc, board.side_to_move(), 0, originalTimeAdjust);
   InfoFull lastInfo{};
   chess::Move lastPV[MAX_PLY]{};
   for (int i = 1; i < timecontrol.depth; i++) {
