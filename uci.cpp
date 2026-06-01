@@ -158,7 +158,7 @@ void engine::report(std::string_view bestmove) {
 }
 void engine::loop() {
   std::string line;
-  pos.setFEN(chess::PositionSTART_FEN);
+  pos.setFEN(chess::Position::START_FEN);
 
   while (std::getline(std::cin, line)) {
     std::istringstream ss(line);
