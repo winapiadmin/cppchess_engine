@@ -20,9 +20,13 @@ constexpr bool is_valid(Value value) { return value != VALUE_NONE; }
 
 constexpr bool is_win(Value value) { return value >= VALUE_TB_WIN_IN_MAX_PLY; }
 
-constexpr bool is_loss(Value value) { return value <= VALUE_TB_LOSS_IN_MAX_PLY; }
+constexpr bool is_loss(Value value) {
+  return value <= VALUE_TB_LOSS_IN_MAX_PLY;
+}
 
-constexpr bool is_decisive(Value value) { return is_win(value) || is_loss(value); }
+constexpr bool is_decisive(Value value) {
+  return is_win(value) || is_loss(value);
+}
 constexpr Value MATE(int i) { return VALUE_MATE - i; }
 constexpr Value MATE_DISTANCE(int i) { return VALUE_MATE - (i < 0 ? -i : i); }
 namespace eval {
