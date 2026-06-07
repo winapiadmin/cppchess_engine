@@ -8,14 +8,18 @@ namespace engine::movepick {
 
 static Bitboard att(PieceType pt, Square sq, Bitboard occ) {
     switch (pt) {
-    case BISHOP: return attacks::bishop(sq, occ);
-    case ROOK:   return attacks::rook(sq, occ);
-    case QUEEN:  return attacks::queen(sq, occ);
-    default:     return 0;
+    case BISHOP:
+        return attacks::bishop(sq, occ);
+    case ROOK:
+        return attacks::rook(sq, occ);
+    case QUEEN:
+        return attacks::queen(sq, occ);
+    default:
+        return 0;
     }
 }
 
-Value see(Board& board, Move move) {
+Value see(Board &board, Move move) {
     if (move.type_of() == EN_PASSANT)
         return piece_value(PAWN);
     PieceType captured = board.at<PieceType>(move.to());

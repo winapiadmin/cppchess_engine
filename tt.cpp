@@ -37,7 +37,7 @@ void TranspositionTable::store(uint64_t hash, chess::Move best, int16_t score, i
 
     uint64_t index = index_for_hash(hash, buckets);
 
-    TTEntry &e0 = table[2*index], &e1 = table[2*index + 1];
+    TTEntry &e0 = table[2 * index], &e1 = table[2 * index + 1];
     // Store the entry
     for (TTEntry *e : { &e0, &e1 }) {
         if (e->key == hash || e->getDepth() < depth) {
@@ -55,14 +55,14 @@ void TranspositionTable::store(uint64_t hash, chess::Move best, int16_t score, i
     oldest->setPackedFields(score, depth, flag, best.raw(), time);
 }
 
-TTEntry* TranspositionTable::lookup(uint64_t hash) {
+TTEntry *TranspositionTable::lookup(uint64_t hash) {
     if (buckets == 0)
         return nullptr;
 
     uint64_t bucket = index_for_hash(hash, buckets);
 
-    TTEntry& e0 = table[2 * bucket];
-    TTEntry& e1 = table[2 * bucket + 1];
+    TTEntry &e0 = table[2 * bucket];
+    TTEntry &e1 = table[2 * bucket + 1];
 
     if (e0.key == hash)
         return &e0;

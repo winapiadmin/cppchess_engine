@@ -164,7 +164,8 @@ void engine::report(const InfoFull &info, bool showWDL) {
        << " tbhits " << info.tbHits     //
        << " time " << info.timeMs       //
        << " pv " << info.pv;            //
-    if (!info.extrainfo.empty()) ss << "\ninfo string extras "<<info.extrainfo;
+    if (!info.extrainfo.empty())
+        ss << "\ninfo string extras " << info.extrainfo;
     std::cout << ss.str() << std::endl;
 }
 
