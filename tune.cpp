@@ -39,65 +39,61 @@ std::map<std::string, int> TuneResults;
 
 std::optional<std::string> on_tune(const Option &o) {
 
-  if (!Tune::update_on_last || LastOption == &o)
-    Tune::read_options();
+    if (!Tune::update_on_last || LastOption == &o)
+        Tune::read_options();
 
-  return std::nullopt;
+    return std::nullopt;
 }
 } // namespace
 
-void Tune::make_option(OptionsMap *opts, const string &n, int v,
-                       const SetRange &r) {
+void Tune::make_option(OptionsMap *opts, const string &n, int v, const SetRange &r) {
 
-  // Do not generate option when there is nothing to tune (ie. min = max)
-  if (r(v).first == r(v).second)
-    return;
+    // Do not generate option when there is nothing to tune (ie. min = max)
+    if (r(v).first == r(v).second)
+        return;
 
-  if (TuneResults.count(n))
-    v = TuneResults[n];
+    if (TuneResults.count(n))
+        v = TuneResults[n];
 
-  opts->add(n, Option(v, r(v).first, r(v).second, on_tune));
-  LastOption = &((*opts)[n]);
+    opts->add(n, Option(v, r(v).first, r(v).second, on_tune));
+    LastOption = &((*opts)[n]);
 
-  // Print formatted parameters, ready to be copy-pasted in Fishtest
-  std::cout << n << "," //
+    // Print formatted parameters, ready to be copy-pasted in Fishtest
+    std::cout << n << "," //
 #ifdef OPENBENCH_SUPPORT
-                        // or OpenBench
-            << "int" << ","
+                          // or OpenBench
+              << "int" << ","
 #endif
-            << v << ","                                 //
-            << r(v).first << ","                        //
-            << r(v).second << ","                       //
-            << (r(v).second - r(v).first) / 20.0 << "," //
-            << "0.0020" << std::endl;
+              << v << ","                                 //
+              << r(v).first << ","                        //
+              << r(v).second << ","                       //
+              << (r(v).second - r(v).first) / 20.0 << "," //
+              << "0.0020" << std::endl;
 }
 
 string Tune::next(string &names, bool pop) {
 
-  string name;
+    string name;
 
-  do {
-    string token = names.substr(0, names.find(','));
+    do {
+        string token = names.substr(0, names.find(','));
 
-    if (pop)
-      names.erase(0, token.size() + 1);
+        if (pop)
+            names.erase(0, token.size() + 1);
 
-    std::stringstream ws(token);
-    name += (ws >> token, token); // Remove trailing whitespace
+        std::stringstream ws(token);
+        name += (ws >> token, token); // Remove trailing whitespace
 
-  } while (std::count(name.begin(), name.end(), '(') -
-           std::count(name.begin(), name.end(), ')'));
+    } while (std::count(name.begin(), name.end(), '(') - std::count(name.begin(), name.end(), ')'));
 
-  return name;
+    return name;
 }
 
-template <> void Tune::Entry<int>::init_option() {
-  make_option(options, name, value, range);
-}
+template <> void Tune::Entry<int>::init_option() { make_option(options, name, value, range); }
 
 template <> void Tune::Entry<int>::read_option() {
-  if (options->count(name))
-    value = int((*options)[name]);
+    if (options->count(name))
+        value = int((*options)[name]);
 }
 
 // Instead of a variable here we have a PostUpdate function: just call it

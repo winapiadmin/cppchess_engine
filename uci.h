@@ -4,28 +4,28 @@
 #include <string_view>
 namespace engine {
 struct InfoShort {
-  int depth;
-  Score score;
+    int depth;
+    Score score;
 };
 
 struct InfoFull : InfoShort {
-  int selDepth;
-  size_t multiPV;
-  std::string_view wdl;
-  std::string_view bound;
-  size_t timeMs;
-  size_t nodes;
-  size_t nps;
-  size_t tbHits;
-  std::string pv;
-  std::string extrainfo;
-  int hashfull;
+    int selDepth;
+    size_t multiPV;
+    std::string_view wdl;
+    std::string_view bound;
+    size_t timeMs;
+    size_t nodes;
+    size_t nps;
+    size_t tbHits;
+    std::string pv;
+    std::string extrainfo;
+    int hashfull;
 };
 
 struct InfoIteration {
-  int depth;
-  std::string currmove;
-  size_t currmovenumber;
+    int depth;
+    std::string currmove;
+    size_t currmovenumber;
 };
 std::string format_score(const Score &s);
 void report(const InfoFull &info, bool showWDL = false);

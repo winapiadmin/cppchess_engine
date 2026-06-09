@@ -18,7 +18,7 @@ FetchContent_Declare(
 )
 set(BUILD_GAVIOTA OFF CACHE BOOL "Enable Gaviota TB probing" FORCE)
 FetchContent_MakeAvailable(chesslib tbprobe)
-add_executable(engine "main.cpp" "timeman.cpp" "timeman.h" "eval.h" "eval.cpp" "tune.h" "ucioption.h" "tune.cpp" "ucioption.cpp" "tt.h" "tt.cpp" "uci.cpp" "uci.h" "search.h" "search.cpp" "score.h" "score.cpp" "movepick.h" "movepick.cpp" "tb.h" "tb.cpp")
+add_executable(engine "main.cpp" "timeman.cpp" "timeman.h" "eval.h" "eval.cpp" "tune.h" "ucioption.h" "tune.cpp" "ucioption.cpp" "tt.h" "tt.cpp" "uci.cpp" "uci.h" "search.h" "search.cpp" "score.h" "score.cpp" "movepick.h" "movepick.cpp" "tb.h" "tb.cpp" "Weights.h")
 target_link_libraries(engine PRIVATE chesslib syzygy_probe)
 target_include_directories(engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${chesslib_SOURCE_DIR})
 execute_process(
