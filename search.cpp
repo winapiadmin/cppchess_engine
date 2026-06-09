@@ -27,7 +27,6 @@ void update_pv(Move *pv, Move move, const Move *childPv) {
 // The function is called before storing a value in the transposition table.
 Value value_to_tt(Value v, int ply) { return is_win(v) ? v + ply : is_loss(v) ? v - ply : v; }
 
-
 // Inverse of value_to_tt(): it adjusts a mate or TB score from the transposition
 // table (which refers to the plies to mate/be mated from current position) to
 // "plies to mate/be mated (TB win/loss) from the root". However, to avoid
@@ -39,8 +38,7 @@ Value value_from_tt(Value v, int ply, int r50c) {
         return VALUE_NONE;
 
     // handle TB win or better
-    if (is_win(v))
-    {
+    if (is_win(v)) {
         // Downgrade a potentially false mate score
         if (is_mate(v) && VALUE_MATE - v > 100 - r50c)
             return VALUE_TB_WIN_IN_MAX_PLY - 1;
@@ -53,8 +51,7 @@ Value value_from_tt(Value v, int ply, int r50c) {
     }
 
     // handle TB loss or worse
-    if (is_loss(v))
-    {
+    if (is_loss(v)) {
         // Downgrade a potentially false mate score.
         if (is_mated(v) && VALUE_MATE + v > 100 - r50c)
             return VALUE_TB_LOSS_IN_MAX_PLY + 1;
@@ -256,7 +253,7 @@ Value doSearch(
 
     // Null move pruning (skip when a mate threat is possible)
     if (depth >= 3 && !inCheck && ply > 0 && staticEval >= beta && !is_win(beta)) {
-        int R = 2 + depth / 6;// + std::min(2, depth / 10);
+        int R = 2 + depth / 6; // + std::min(2, depth / 10);
         board.doNullMove();
         Value score = doSearch(board, depth - 1 - R, -beta, -beta + 1, session, ply + 1, Move::none());
         board.undoMove();
@@ -319,8 +316,9 @@ Value doSearch(
     // Internal Iterative Deepening (IID): get a TT move when we don't have one
     if (depth >= 8 && ttMove == Move::none() && !inCheck && alpha != beta - 1) {
         int d = std::max(2, depth - 2 - depth / 4);
-        Value v=doSearch(board, d, alpha, beta, session, ply, prevMove);
-        if (v==VALUE_NONE) return VALUE_NONE;
+        Value v = doSearch(board, d, alpha, beta, session, ply, prevMove);
+        if (v == VALUE_NONE)
+            return VALUE_NONE;
         if (TTEntry *e = search::tt.lookup(hash))
             ttMove = Move(e->getMove());
     }
@@ -358,7 +356,6 @@ Value doSearch(
                 singularExt = 1;
         }
     }
-
 
     Value maxScore = -VALUE_INFINITE;
     int movesSearched = 0;
