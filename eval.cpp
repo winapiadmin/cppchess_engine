@@ -29,7 +29,7 @@ Value *mgPst[] = { nullptr, mg_pawn_table, mg_knight_table, mg_bishop_table, mg_
 Value *egPst[] = { nullptr, eg_pawn_table, eg_knight_table, eg_bishop_table, eg_rook_table, eg_queen_table, eg_king_table };
 
 // tuning slop here
-TUNE(SetRange(5, 30),
+/*TUNE(SetRange(5, 30),
      tempo,
      SetRange(80, 120),
      PawnValue,
@@ -207,7 +207,7 @@ TUNE(SetRange(0, 30),
      krkEdgeWeight,
      SetRange(0, 30),
      kpkWeight);
-
+*/
 Value eval(const chess::Board &board) {
     constexpr int KnightPhase = 1;
     constexpr int BishopPhase = 1;
