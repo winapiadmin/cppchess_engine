@@ -40,7 +40,18 @@ constexpr Value mate_in(int ply) { return VALUE_MATE - ply; }
 
 constexpr Value mated_in(int ply) { return -VALUE_MATE + ply; }
 namespace eval {
+
+struct EvalComponents {
+    int mg;
+    int eg;
+    int phase;
+};
+
+extern Value *mgPst[];
+extern Value *egPst[];
+
 Value eval(const chess::Board &board);
+EvalComponents eval_components(const chess::Board &board);
 Value piece_value(chess::PieceType pt);
 } // namespace eval
 } // namespace engine

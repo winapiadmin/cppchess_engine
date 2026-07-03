@@ -20,6 +20,7 @@
 #define TUNE_H_INCLUDED
 
 #include <cstddef>
+#include <iosfwd>
 #include <memory>
 #include <string>
 #include <type_traits> // IWYU pragma: keep
@@ -88,11 +89,13 @@ class Tune {
         return t;
     } // Singleton
 
+  public:
     // Use polymorphism to accommodate Entry of different types in the same vector
     struct EntryBase {
         virtual ~EntryBase() = default;
         virtual void init_option() = 0;
         virtual void read_option() = 0;
+        virtual void print_option(std::ostream &) const = 0;
     };
 
     template <typename T> struct Entry : public EntryBase {
@@ -105,12 +108,16 @@ class Tune {
         void operator=(const Entry &) = delete; // Because 'value' is a reference
         void init_option() override;
         void read_option() override;
+        void print_option(std::ostream &) const override;
 
         std::string name;
         T &value;
         SetRange range;
     };
 
+    static std::vector<std::unique_ptr<EntryBase>> &get_list() { return instance().list; }
+
+  private:
     // Our facility to fill the container, each Entry corresponds to a parameter
     // to tune. We use variadic templates to deal with an unspecified number of
     // entries, each one of a possible different type.
@@ -152,6 +159,11 @@ class Tune {
             e->init_option();
         read_options();
     } // Deferred, due to UCIEngine::Options access
+    template <typename F> static void visit_entries(F &&f) {
+        for (auto &e : instance().list)
+            f(e.get());
+    }
+    static void export_weights(std::ostream &);
     static void read_options() {
         for (auto &e : instance().list)
             e->read_option();

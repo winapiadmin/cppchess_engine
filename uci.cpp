@@ -2,16 +2,22 @@
 #include "eval.h"
 #include "search.h"
 #include "timeman.h"
+#include "tune.h"
+#ifdef USE_CSV_PARSER
+#include "tune_cmd.h"
+#endif
 #include "ucioption.h"
 #include <algorithm>
 #include <cctype>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <position.h>
 #include <printers.h>
 #include <sstream>
 #include <thread>
 using namespace engine;
+bool quit{ false };
 chess::Position pos;
 OptionsMap engine::options;
 std::thread searchThread;
@@ -108,6 +114,7 @@ timeman::LimitsType parse_limits(std::istream &is) {
         else if (token == "infinite")
             limits.infinite = 1;
         else if (token == "ponder") {
+            limits.ponderMode = true;
         }
 
     return limits;
@@ -115,6 +122,8 @@ timeman::LimitsType parse_limits(std::istream &is) {
 
 void handleGo(std::istringstream &ss) {
     stop();
+    if (searchThread.joinable())
+        searchThread.join();
     chess::Position copy = pos;
 
     searchThread = std::thread([copy, ss = std::move(ss)]() mutable { search::search(copy, parse_limits(ss)); });
@@ -184,51 +193,101 @@ void engine::report(std::string_view bestmove) {
     std::cout << "bestmove " << bestmove;
     std::cout << std::endl;
 }
+void execCmd(const std::string &line) {
+    std::istringstream ss(line);
+    std::string token;
+
+    while (ss >> token) {
+        if (token == "uci") {
+            std::cout << "id name cppchess_engine\n";
+            std::cout << "id author winapiadmin\n";
+            std::cout << options << '\n';
+            std::cout << "uciok\n";
+            break;
+        } else if (token == "isready") {
+            std::cout << "readyok\n";
+            break;
+        } else if (token == "position") {
+            handlePosition(ss);
+            break;
+        } else if (token == "go") {
+            handleGo(ss);
+            break; // rest belongs to go
+        } else if (token == "ucinewgame") {
+            search::tt.clear();
+            break;
+        } else if (token == "stop") {
+            break;
+        } else if (token == "quit") {
+            quit = true;
+            return;
+        } else if (token == "setoption") {
+            options.setoption(ss);
+            break;
+        } else if (token == "visualize" || token == "d") {
+            std::cout << pos << std::endl;
+            break;
+        } else if (token == "eval") {
+            handlePosition(ss); // auto-handle it if any
+            int score = eval::eval(pos);
+            if (pos.side_to_move() != chess::WHITE)
+                score = -score;
+            std::cout << score << std::endl;
+            break;
+        } else if (token == "export_weights") {
+            std::string weights_header = "Weights.h";
+            ss >> weights_header;
+            std::fstream file(weights_header, std::ios::out);
+            Tune::export_weights(file);
+            std::cout << "Dumped weights to " << weights_header << '\n';
+            break;
+        } else if (token == "tune") {
+#ifdef USE_CSV_PARSER
+            std::string csv_path, out_file = "Weights.h";
+            int iters = 50, max_pos = 20000;
+            ss >> csv_path >> iters >> max_pos;
+            tune_command(csv_path, iters, max_pos, out_file);
+#else
+            std::cout << "info string engine built without tuning support" << std::endl;
+#endif
+            break;
+        } else if (token == "evalbatch") {
+            char c;
+            bool first = true;
+            while (ss >> c) {
+                if (c != '"')
+                    continue;
+                std::string fen;
+                while (ss.get(c) && c != '"')
+                    fen += c;
+                if (!first)
+                    std::cout << ' ';
+                first = false;
+                try {
+                    chess::Position bp;
+                    bp.setFEN(fen);
+                    int sc = eval::eval(bp);
+                    if (bp.side_to_move() != chess::WHITE)
+                        sc = -sc;
+                    std::cout << sc;
+                } catch (...) {
+                    std::cout << "0";
+                }
+            }
+            std::cout << std::endl;
+            break;
+        }
+    }
+}
 void engine::loop() {
     std::string line;
     pos.setFEN(chess::Position::START_FEN);
 
-    while (std::getline(std::cin, line)) {
-        std::istringstream ss(line);
-        std::string token;
+    while (!quit && std::getline(std::cin, line)) {
         stop();
-        while (ss >> token) {
-            if (token == "uci") {
-                std::cout << "id name cppchess_engine\n";
-                std::cout << "id author winapiadmin\n";
-                std::cout << options << '\n';
-                std::cout << "uciok\n";
-                break;
-            } else if (token == "isready") {
-                std::cout << "readyok\n";
-                break;
-            } else if (token == "position") {
-                handlePosition(ss);
-                break;
-            } else if (token == "go") {
-                handleGo(ss);
-                break; // rest belongs to go
-            } else if (token == "ucinewgame") {
-                search::tt.clear();
-                break;
-            } else if (token == "stop") {
-                break;
-            } else if (token == "quit") {
-                return;
-            } else if (token == "setoption") {
-                options.setoption(ss);
-                break;
-            } else if (token == "visualize" || token == "d") {
-                std::cout << pos << std::endl;
-                break;
-            } else if (token == "eval") {
-                int score = eval::eval(pos);
-                if (pos.side_to_move() != chess::WHITE)
-                    score = -score;
-                std::cout << score << std::endl;
-                break;
-            }
-        }
+        execCmd(line);
     }
     stop();
+    if (searchThread.joinable())
+        searchThread.join();
 }

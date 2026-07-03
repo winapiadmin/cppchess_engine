@@ -6,7 +6,7 @@ on:
       base_ref:
         description: "Base branch, tag, or commit"
         required: false
-        default: "HandcraftedEngine"
+        default: "test_chesslib"
       rounds:
         description: "Max rounds for SPRT"
         required: false
@@ -18,7 +18,7 @@ on:
       output_exec:
         description: "Executable output file name"
         required: false
-        default: "chess_engine"
+        default: "engine"
 
 permissions:
   contents: write
@@ -31,14 +31,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: test_chesslib
+          path: new
 
       - name: Install deps
         run: sudo apt update && sudo apt install -y build-essential cmake
 
       - name: Build new engine
         run: |
-          cd test_chesslib
+          cd new
           mkdir build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: new-engine
-          path: test_chesslib/build/engine
+          path: new/build/engine
 
 
   build-base:
@@ -58,14 +58,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.base_ref }}
-          path: handcrafted
+          path: base
 
       - name: Install deps
         run: sudo apt update && sudo apt install -y build-essential cmake
 
       - name: Build base engine
         run: |
-          cd handcrafted
+          cd base
           mkdir build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
@@ -75,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: base-engine
-          path: handcrafted/build/${{ github.event.inputs.output_exec }}
+          path: base/build/${{ github.event.inputs.output_exec }}
 
 
   test:
@@ -127,3 +127,4 @@ jobs:
           path: |
             games.pgn
             ratings.txt
+            results.txt

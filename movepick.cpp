@@ -18,39 +18,86 @@ static Bitboard att(PieceType pt, Square sq, Bitboard occ) {
         return 0;
     }
 }
+inline Square least_valuable_attacker(const Position& board,
+                                      Bitboard attackers,
+                                      Color side) {
+    Bitboard bb;
 
-Value see(Board &board, Move move) {
-    if (move.type_of() == EN_PASSANT)
-        return piece_value(PAWN);
-    PieceType captured = board.at<PieceType>(move.to());
+    bb = attackers & board.pieces(PAWN, side);
+    if (bb) return Square(pop_lsb(bb));
+
+    bb = attackers & board.pieces(KNIGHT, side);
+    if (bb) return Square(pop_lsb(bb));
+
+    bb = attackers & board.pieces(BISHOP, side);
+    if (bb) return Square(pop_lsb(bb));
+
+    bb = attackers & board.pieces(ROOK, side);
+    if (bb) return Square(pop_lsb(bb));
+
+    bb = attackers & board.pieces(QUEEN, side);
+    if (bb) return Square(pop_lsb(bb));
+
+    bb = attackers & board.pieces(KING, side);
+    if (bb) return Square(pop_lsb(bb));
+
+    return SQ_NONE;
+}
+Value see(Board& board, Move move) {
+    Square from = move.from();
+    Square to   = move.to();
+
+    PieceType captured =
+        move.type_of() == EN_PASSANT ? PAWN : board.at<PieceType>(to);
+
     if (captured == NO_PIECE_TYPE)
         return 0;
-    PieceType attacker = board.at<PieceType>(move.from());
-    Bitboard occ = board.occ() ^ (1ULL << move.from());
-    Bitboard attackers = board.attackers(WHITE, move.to(), occ) | board.attackers(BLACK, move.to(), occ);
+
+    Bitboard occ = board.occ();
+    occ ^= 1ULL<<from;
+
+    Bitboard attackers =
+        board.attackers(WHITE, to, occ) |
+        board.attackers(BLACK, to, occ);
+
     Value gain[32];
-    int d = 0;
-    gain[d] = piece_value(captured);
+    PieceType attacker = board.at<PieceType>(move.from());
+
+    gain[0] = piece_value(captured);
+
     Color stm = ~board.side_to_move();
+    int d = 0;
+
     while (++d < 32) {
+
+        // Charge the piece that just captured.
         gain[d] = piece_value(attacker) - gain[d - 1];
+
         if (gain[d] < 0)
             break;
-        attackers &= occ;
-        Bitboard stmAttackers = attackers & board.occ(stm);
+
+        occ &= attackers;
+
+        Bitboard stmAttackers = attackers & occ & board.occ(stm);
         if (!stmAttackers)
             break;
-        Square sq = (Square)pop_lsb(stmAttackers);
+
+        Square sq = least_valuable_attacker(board, stmAttackers, stm);
         attacker = board.at<PieceType>(sq);
-        if (attacker == NO_PIECE_TYPE)
-            break;
-        if (attacker == BISHOP || attacker == ROOK || attacker == QUEEN)
-            attackers |= att(attacker, move.to(), occ);
-        occ ^= (1ULL << sq);
+
+        occ ^= 1ULL<<sq;
+
+        // Recompute x-rays after EVERY removal.
+        attackers =
+            board.attackers(WHITE, to, occ) |
+            board.attackers(BLACK, to, occ);
+
         stm = ~stm;
     }
+
     while (--d)
-        gain[d - 1] = -gain[d];
+        gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
+
     return gain[0];
 }
 

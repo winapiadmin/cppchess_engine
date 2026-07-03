@@ -29,7 +29,7 @@ Value *mgPst[] = { nullptr, mg_pawn_table, mg_knight_table, mg_bishop_table, mg_
 Value *egPst[] = { nullptr, eg_pawn_table, eg_knight_table, eg_bishop_table, eg_rook_table, eg_queen_table, eg_king_table };
 
 // tuning slop here
-/*TUNE(SetRange(5, 30),
+TUNE(SetRange(5, 30),
      tempo,
      SetRange(80, 120),
      PawnValue,
@@ -53,6 +53,7 @@ TUNE(SetRange(0, 30),
      SetRange(1, 30),
      spaceWeight);
 TUNE(SetRange(0, 50), bishopPairMg, SetRange(0, 50), bishopPairEg);
+TUNE(SetRange(1, 20), developedMg, SetRange(1, 20), developedEg);
 TUNE(SetRange(0, 30),
      rookOpenFileMg,
      SetRange(0, 30),
@@ -207,17 +208,63 @@ TUNE(SetRange(0, 30),
      krkEdgeWeight,
      SetRange(0, 30),
      kpkWeight);
-*/
-Value eval(const chess::Board &board) {
+
+TUNE(SetRange(1, 100), outpostBonusKnight, outpostBonusBishop);
+TUNE(SetRange(-20, 20), kingProtector);
+TUNE(SetRange(-50, 100),
+     threatByMinor[1],
+     threatByMinor[2],
+     threatByMinor[3],
+     threatByMinor[4],
+     threatByMinor[5],
+     threatByMinor[6]);
+TUNE(SetRange(-50, 100), threatByRook[1], threatByRook[2], threatByRook[3], threatByRook[4], threatByRook[5], threatByRook[6]);
+TUNE(SetRange(1, 100), hangingScore, overloadScore, threatByRankScore);
+TUNE(SetRange(10, 100), minorImWt, SetRange(5, 50), bishopImWt, SetRange(10, 100), rookImWt, SetRange(20, 150), queenImWt);
+TUNE(SetRange(1, 50), rammedPawnPenalty);
+TUNE(SetRange(1, 100), rookOnSeventhBonus);
+TUNE(SetRange(1, 50), earlyQueenPenalty);
+
+EvalComponents eval_components(const chess::Board &board) {
     constexpr int KnightPhase = 1;
     constexpr int BishopPhase = 1;
     constexpr int RookPhase = 2;
     constexpr int QueenPhase = 4;
     constexpr int TotalPhase = KnightPhase * 4 + BishopPhase * 4 + RookPhase * 4 + QueenPhase * 2;
-    const int sign = board.side_to_move() == WHITE ? 1 : -1;
     int mgScore = 0;
     int egScore = 0;
     int phase = 0;
+    // Precompute pawn attacks (needed for outpost, threats, etc.)
+    Bitboard pawnBB[2] = { board.pieces(PAWN, WHITE), board.pieces(PAWN, BLACK) };
+    Bitboard pawnAtks[2] = { attacks::pawn<WHITE>(pawnBB[WHITE]), attacks::pawn<BLACK>(pawnBB[BLACK]) };
+#if 0
+    // Development bonus: penalize undeveloped knights/bishops in middlegame
+    int devCount[2] = { 0, 0 };
+    for (Color c : { WHITE, BLACK }) {
+        Bitboard homeRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
+        Bitboard knights = board.pieces(KNIGHT, c);
+        Bitboard bishops = board.pieces(BISHOP, c);
+        Bitboard knightsHome = knights & homeRank;
+        Bitboard bishopsHome = bishops & homeRank;
+        devCount[c] = popcount(knightsHome) + popcount(bishopsHome);
+    }
+    mgScore += (devCount[BLACK] - devCount[WHITE]) * developedMg;
+    egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
+
+    // Early queen development penalty: queen moved but minors still on back rank
+    for (Color c : { WHITE, BLACK }) {
+        int s = (c == WHITE) ? 1 : -1;
+        Square qStart = c == WHITE ? SQ_D1 : SQ_D8;
+        if (!(board.pieces(QUEEN, c) & (1ULL << qStart))) {
+            Bitboard backRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
+            int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
+            if (undeveloped >= 2) {
+                mgScore -= s * earlyQueenPenalty;
+                egScore -= s * earlyQueenPenalty;
+            }
+        }
+    }
+#endif
     {
         Bitboard pinMask = board.pin_mask();
         Bitboard occ = board.occ(), occ2 = occ;
@@ -263,6 +310,31 @@ Value eval(const chess::Board &board) {
                 mgScore += _sign * (7 - kd) * kingTropismMg[pt];
                 egScore += _sign * (7 - kd) * kingTropismEg[pt];
             }
+#if 0
+            // King protector: bonus for pieces close to own king
+            if (pt != PAWN && pt != KING) {
+                int kdist = square_distance(sq, board.kingSq(pc));
+                int ki = std::min(kdist, 5);
+                mgScore += _sign * kingProtector[pt][0] / (1 + ki);
+                egScore += _sign * kingProtector[pt][1] / (1 + ki);
+            }
+            // Outpost bonus for knights and bishops
+            if (pt == KNIGHT || pt == BISHOP) {
+                Rank r = rank_of(sq);
+                bool onOutpost = (pc == WHITE && r >= RANK_5) || (pc == BLACK && r <= RANK_4);
+                if (onOutpost && !(pawnAtks[~pc] & (1ULL << sq))) {
+                    bool defended = (pawnAtks[pc] & (1ULL << sq)) != 0;
+                    int idx = defended ? 1 : 0;
+                    if (pt == KNIGHT) {
+                        mgScore += _sign * outpostBonusKnight[idx];
+                        egScore += _sign * outpostBonusKnight[idx];
+                    } else {
+                        mgScore += _sign * outpostBonusBishop[idx];
+                        egScore += _sign * outpostBonusBishop[idx];
+                    }
+                }
+            }
+#endif
         }
     }
     // Bishop pair bonus
@@ -287,7 +359,7 @@ Value eval(const chess::Board &board) {
             }
         }
     }
-
+#if 0
     // Trapped bishop penalty
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -300,7 +372,7 @@ Value eval(const chess::Board &board) {
             }
         }
     }
-
+#endif
     // Rook on open/semi-open file
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -320,11 +392,31 @@ Value eval(const chess::Board &board) {
             }
         }
     }
-
-    // Precompute pawn data
-    Bitboard pawnBB[2] = { board.pieces(PAWN, WHITE), board.pieces(PAWN, BLACK) };
-    Bitboard pawnAtks[2] = { attacks::pawn<WHITE>(pawnBB[WHITE]), attacks::pawn<BLACK>(pawnBB[BLACK]) };
-
+#if 0
+    // Rook on seventh rank bonus (endgame, x-raying >=2 undefended pawns)
+    for (Color c : { WHITE, BLACK }) {
+        int s = (c == WHITE) ? 1 : -1;
+        Bitboard rooks = board.pieces(ROOK, c);
+        while (rooks) {
+            Square sq = Square(pop_lsb(rooks));
+            Rank r7 = c == WHITE ? RANK_7 : RANK_2;
+            if (rank_of(sq) != r7)
+                continue;
+            Bitboard ep = board.pieces(PAWN, ~c) & attacks::MASK_RANK[r7];
+            int cnt = 0;
+            Bitboard tmp = ep;
+            while (tmp) {
+                Square psq = Square(pop_lsb(tmp));
+                if (!board.is_attacked_by(~c, psq))
+                    cnt++;
+            }
+            if (cnt >= 2) {
+                mgScore += s * rookOnSeventhBonus / 2;
+                egScore += s * rookOnSeventhBonus;
+            }
+        }
+    }
+#endif
     // Pawn structure: doubled, isolated, passed in one pass per color
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -369,7 +461,21 @@ Value eval(const chess::Board &board) {
             }
         }
     }
-
+#if 0
+    // Pawn rams: blocked pawn penalty
+    for (Color c : { WHITE, BLACK }) {
+        int s = (c == WHITE) ? 1 : -1;
+        Bitboard pawns = pawnBB[c];
+        while (pawns) {
+            Square sq = Square(pop_lsb(pawns));
+            Square forward = sq + pawn_push(c);
+            if (forward >= SQ_A1 && forward <= SQ_H8 && (pawnBB[~c] & (1ULL << forward))) {
+                mgScore -= s * rammedPawnPenalty;
+                egScore -= s * rammedPawnPenalty;
+            }
+        }
+    }
+#endif
     // Center control (using precomputed pawn attacks)
     {
         Bitboard centerMask = (1ULL << SQ_D4) | (1ULL << SQ_E4) | (1ULL << SQ_D5) | (1ULL << SQ_E5);
@@ -497,6 +603,93 @@ Value eval(const chess::Board &board) {
         }
     }
 
+// --- Threat evaluation ---
+#if 0
+    for (Color c : { WHITE, BLACK }) {
+        int s = (c == WHITE) ? 1 : -1;
+        Color opp = ~c;
+        Bitboard ourPieces = board.occ(c) & ~board.pieces(PAWN) & ~board.pieces(KING);
+        while (ourPieces) {
+            Square sq = Square(pop_lsb(ourPieces));
+            PieceType pt = piece_of(board.at(sq));
+            bool attacked = board.is_attacked_by(opp, sq);
+            if (!attacked)
+                continue;
+            bool defended = board.is_attacked_by(c, sq);
+            Bitboard occ = board.occ();
+            int attackers = popcount(board.attackers_mask(opp, sq, occ));
+            int defenders = defended ? popcount(board.attackers_mask(c, sq, occ)) : 0;
+            bool hanging = !defended;
+            bool overloaded = defenders == 1 && attackers >= 2;
+            bool attackedByMinor =
+                (board.attackers_mask(opp, sq, occ) & (board.pieces(KNIGHT, opp) | board.pieces(BISHOP, opp))) != 0;
+            bool attackedByRook = (board.attackers_mask(opp, sq, occ) & board.pieces(ROOK, opp)) != 0;
+
+            int mgThreat = 0, egThreat = 0;
+            if (hanging) {
+                mgThreat += (pt == QUEEN ? hangingScore / 2 : hangingScore);
+                egThreat += (pt == QUEEN ? hangingScore / 4 : hangingScore / 2);
+            }
+            if (overloaded) {
+                mgThreat += overloadScore;
+                egThreat += overloadScore / 2;
+            }
+            if (attackedByMinor && pt < KING) {
+                mgThreat += threatByMinor[pt][0];
+                egThreat += threatByMinor[pt][1];
+            }
+            if (attackedByRook && pt < KING) {
+                mgThreat += threatByRook[pt][0];
+                egThreat += threatByRook[pt][1];
+            }
+            // Rank-based threat bonus
+            Rank relRank = relative_rank(c, sq);
+            mgThreat += threatByRankScore * static_cast<int>(relRank);
+            egThreat += threatByRankScore * static_cast<int>(relRank);
+
+            mgScore -= s * mgThreat;
+            egScore -= s * egThreat;
+        }
+    }
+
+    // --- Trapped bishop at a7/h7 ---
+    for (Color c : { WHITE, BLACK }) {
+        int s = (c == WHITE) ? 1 : -1;
+        Color opp = ~c;
+        Square aFileSq = relative_square(c, SQ_A7);
+        Square hFileSq = relative_square(c, SQ_H7);
+        Square bPawnSq = relative_square(c, SQ_B6);
+        Square gPawnSq = relative_square(c, SQ_G6);
+        // Bishop on a7/h7 trapped by b6/g6 pawn
+        if (board.at<PieceType>(aFileSq) == BISHOP && board.at<Color>(aFileSq) == c) {
+            if (board.at<PieceType>(bPawnSq) == PAWN && board.at<Color>(bPawnSq) == opp && !board.is_attacked_by(c, aFileSq)) {
+                mgScore -= s * trappedBishopPenalty;
+                egScore -= s * trappedBishopPenalty;
+            }
+        }
+        if (board.at<PieceType>(hFileSq) == BISHOP && board.at<Color>(hFileSq) == c) {
+            if (board.at<PieceType>(gPawnSq) == PAWN && board.at<Color>(gPawnSq) == opp && !board.is_attacked_by(c, hFileSq)) {
+                mgScore -= s * trappedBishopPenalty;
+                egScore -= s * trappedBishopPenalty;
+            }
+        }
+    }
+    // --- Material imbalance ---
+    {
+        int pieceCount[2][7] = { { 0 } };
+        for (Color c : { WHITE, BLACK })
+            for (PieceType pt : { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING })
+                pieceCount[c][pt] = board.count(pt, c);
+        int ourMinors = pieceCount[WHITE][KNIGHT] + pieceCount[WHITE][BISHOP];
+        int theirMinors = pieceCount[BLACK][KNIGHT] + pieceCount[BLACK][BISHOP];
+        int imbalance = (ourMinors - theirMinors) * minorImWt                                  // minor piece imbalance
+                        + (pieceCount[WHITE][BISHOP] - pieceCount[BLACK][BISHOP]) * bishopImWt // bishop vs knight
+                        + (pieceCount[WHITE][ROOK] - pieceCount[BLACK][ROOK]) * rookImWt       // rook imbalance
+                        + (pieceCount[WHITE][QUEEN] - pieceCount[BLACK][QUEEN]) * queenImWt;   // queen imbalance
+        mgScore += imbalance;
+        egScore += imbalance;
+    }
+#endif
     // Draw detection: score 0 for positions where neither side can force a win
     int totalPieces = popcount(board.occ());
     int pawnCount = board.count<PAWN>();
@@ -510,17 +703,21 @@ Value eval(const chess::Board &board) {
         Square wb = Square(pop_lsb(wbBB));
         Square bb = Square(pop_lsb(bbBB));
         if (square_color(wb) == square_color(bb))
-            return 0;
+            return { 0, 0, 0 };
     }
 
     // KNNK (no pawns) - drawn
     if (totalPieces == 4 && pawnCount == 0 && board.count<KNIGHT>() == 2 && board.count<BISHOP>() == 0 &&
         board.count<ROOK>() == 0 && board.count<QUEEN>() == 0)
-        return 0;
+        return { 0, 0, 0 };
 
     phase = (phase * 256 + TotalPhase / 2) / TotalPhase;
-    Value finalScore = (((mgScore * phase) + (egScore * (256 - phase))) * sign) / 256 + tempo;
-    return finalScore;
+    return { mgScore, egScore, phase };
+}
+Value eval(const chess::Board &board) {
+    const int sign = board.side_to_move() == WHITE ? 1 : -1;
+    auto [mg, eg, phase] = eval_components(board);
+    return (((mg * phase) + (eg * (256 - phase))) * sign) / 256 + engine::eval::tempo;
 }
 Value piece_value(PieceType pt) {
     Value pieces[] = { 0, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, 0 };

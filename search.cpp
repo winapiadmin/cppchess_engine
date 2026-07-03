@@ -10,6 +10,7 @@
 #include <position.h>
 #include <printers.h>
 #include <sstream>
+#include <unordered_set>
 using namespace chess;
 namespace engine::search {
 TranspositionTable tt(16);
@@ -339,6 +340,13 @@ Value doSearch(
         if (moves.size() <= 5) {
             bool singular = true;
             for (size_t si = 0; si < moves.size() && singular; ++si) {
+                if (ply == 0 &&
+                    !session.tc.searchmoves.empty() &&
+                    std::find(session.tc.searchmoves.begin(),
+                              session.tc.searchmoves.end(),
+                              chess::uci::moveToUci(moves[si], board.chess960()))
+                        == session.tc.searchmoves.end())
+                    continue;
                 if (moves[si] == ttMove)
                     continue;
                 board.doMove(moves[si]);
@@ -362,6 +370,11 @@ Value doSearch(
 
     for (size_t i = 0; i < moves.size(); ++i) {
         Move move = moves[i];
+        if (ply == 0 && !session.tc.searchmoves.empty() &&
+            std::find(session.tc.searchmoves.begin(),
+                      session.tc.searchmoves.end(),
+                      chess::uci::moveToUci(move, board.chess960())) == session.tc.searchmoves.end())
+            continue;
 
         bool isCapture = board.isCapture(move);
         bool givesCheck = board.givesCheck(move) != CheckType::NO_CHECK;
@@ -416,7 +429,6 @@ Value doSearch(
             ext = 1;
         if (ext == 0 && isCapture && movesSearched == 0)
             ext = 1;
-
         board.doMove(move);
 
         Value score;
@@ -465,7 +477,11 @@ Value doSearch(
                 session.historyHeuristic[(int)move.from()][(int)move.to()] =
                     std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + bonus, -16384, 16384);
             }
-        }
+        } /*else if (!isCapture && depth > 0) {
+            int malus = -depth * depth;
+            session.historyHeuristic[(int)move.from()][(int)move.to()] =
+                std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + malus, -16384, 16384);
+        }*/
 
         if (alpha >= beta) {
             if (!isCapture) {
@@ -493,6 +509,8 @@ Value doSearch(
 std::string extract_pv(const chess::Board &root, int maxPly) {
     std::string pv;
     chess::Board pos = root;
+    std::unordered_set<uint64_t> visited;
+    visited.insert(pos.hash());
     for (int ply = 0; ply < maxPly; ply++) {
         if (pos.is_draw(3))
             break;
@@ -502,7 +520,6 @@ std::string extract_pv(const chess::Board &root, int maxPly) {
         chess::Move m(e->getMove());
         if (!m.is_ok())
             break;
-        uint64_t h = pos.hash();
         chess::Movelist ml;
         pos.legals(ml);
         bool legal = false;
@@ -517,6 +534,8 @@ std::string extract_pv(const chess::Board &root, int maxPly) {
         if (ply + 1 >= maxPly)
             break;
         pos.doMove(m);
+        if (!visited.insert(pos.hash()).second)
+            break;
     }
     return pv;
 }
@@ -532,6 +551,26 @@ void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
     session.ogcolor = board.side_to_move();
     chess::Move lastPV[MAX_PLY]{};
     Value prevScore = VALUE_NONE;
+
+    if (!session.tc.searchmoves.empty()) {
+        Movelist legal;
+        board.legals(legal);
+        bool any_legal = false;
+        for (size_t i = 0; i < legal.size() && !any_legal; ++i)
+            if (std::find(session.tc.searchmoves.begin(),
+                          session.tc.searchmoves.end(),
+                          chess::uci::moveToUci(legal[i], board.chess960())) != session.tc.searchmoves.end())
+                any_legal = true;
+        if (!any_legal)
+            session.tc.searchmoves.clear();
+    }
+
+    {
+        Movelist legal;
+        board.legals(legal);
+        if (legal.size())
+            lastPV[0] = legal[0];
+    }
 
     for (int i = 1; i <= timecontrol.depth; i++) {
         session.lastLogTime = session.tm.elapsed();
@@ -613,10 +652,15 @@ void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
 
             if (moves.size()) {
                 Board board_ = board;
-                Move best = moves[0];
+                Move best = Move::none();
                 Value bestScore = -VALUE_INFINITE;
                 Session tmpSession{};
                 for (Move move : moves) {
+                    if (!session.tc.searchmoves.empty() &&
+                        std::find(session.tc.searchmoves.begin(),
+                                  session.tc.searchmoves.end(),
+                                  chess::uci::moveToUci(move, board.chess960())) == session.tc.searchmoves.end())
+                        continue;
                     board_.doMove(move);
                     Value score = -qsearch(board_, -VALUE_INFINITE, VALUE_INFINITE, tmpSession, 0);
                     if (score > bestScore) {
@@ -626,15 +670,19 @@ void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
                     board_.undoMove();
                 }
 
-                InfoFull info{};
-                info.depth = 1;
-                info.nodes = 1;
-                info.score = 0;
-                info.multiPV = 1;
-                info.pv = std::string(chess::uci::moveToUci(best, board.chess960()));
-                report(info);
+                if (best.is_ok()) {
+                    InfoFull info{};
+                    info.depth = 1;
+                    info.nodes = 1;
+                    info.score = 0;
+                    info.multiPV = 1;
+                    info.pv = std::string(chess::uci::moveToUci(best, board.chess960()));
+                    report(info);
 
-                report(chess::uci::moveToUci(best, board.chess960()));
+                    report(chess::uci::moveToUci(best, board.chess960()));
+                } else {
+                    report("0000");
+                }
             } else {
                 report("0000");
             }
