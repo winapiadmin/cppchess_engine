@@ -72,10 +72,10 @@ void Tune::make_option(OptionsMap *opts, const string &n, int v, const SetRange 
                           // or OpenBench
               << "int" << ","
 #endif
-              << v << ","                      //
-              << a << ","                      //
-              << b << ","                      //
-              << (b - a) / 20.0 << ","         //
+              << v << ","              //
+              << a << ","              //
+              << b << ","              //
+              << (b - a) / 20.0 << "," //
               << "0.0020" << std::endl;
 }
 
