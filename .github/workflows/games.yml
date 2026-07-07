@@ -12,9 +12,9 @@ on:
         required: false
         default: "6000"
       tc:
-        description: "Time control (e.g. 60+0.5 or 10+0.1)"
+        description: "Time control (e.g. 60+0.6 or 10+0.1)"
         required: false
-        default: "60+0.5"
+        default: "60+0.6"
       output_exec:
         description: "Executable output file name"
         required: false
@@ -115,7 +115,7 @@ jobs:
             -rounds ${{ github.event.inputs.rounds }} \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true file=games.pgn \
-            -sprt elo0=0 elo1=2 alpha=0.05 beta=0.05 | tee results.txt
+            -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05 | tee results.txt
 
           ./ordo-linux64 -o ratings.txt -- games.pgn
           sed -n '/Results of new vs base/,/^--------------------------------------------------$/p' results.txt >> ratings.txt
