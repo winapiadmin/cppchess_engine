@@ -546,7 +546,7 @@ void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
     static double originalTimeAdjust = -1;
     Session session;
     session.tc = timecontrol;
-    session.tm.init(session.tc, board.side_to_move(), 0, originalTimeAdjust);
+    session.tm.init(session.tc, board.side_to_move(), board.ply(), originalTimeAdjust);
     session.lastLogTime = session.tm.elapsed();
     session.ogcolor = board.side_to_move();
     chess::Move lastPV[MAX_PLY]{};
