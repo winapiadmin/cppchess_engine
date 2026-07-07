@@ -18,47 +18,48 @@ static Bitboard att(PieceType pt, Square sq, Bitboard occ) {
         return 0;
     }
 }
-inline Square least_valuable_attacker(const Position& board,
-                                      Bitboard attackers,
-                                      Color side) {
+inline Square least_valuable_attacker(const Position &board, Bitboard attackers, Color side) {
     Bitboard bb;
 
     bb = attackers & board.pieces(PAWN, side);
-    if (bb) return Square(pop_lsb(bb));
+    if (bb)
+        return Square(pop_lsb(bb));
 
     bb = attackers & board.pieces(KNIGHT, side);
-    if (bb) return Square(pop_lsb(bb));
+    if (bb)
+        return Square(pop_lsb(bb));
 
     bb = attackers & board.pieces(BISHOP, side);
-    if (bb) return Square(pop_lsb(bb));
+    if (bb)
+        return Square(pop_lsb(bb));
 
     bb = attackers & board.pieces(ROOK, side);
-    if (bb) return Square(pop_lsb(bb));
+    if (bb)
+        return Square(pop_lsb(bb));
 
     bb = attackers & board.pieces(QUEEN, side);
-    if (bb) return Square(pop_lsb(bb));
+    if (bb)
+        return Square(pop_lsb(bb));
 
     bb = attackers & board.pieces(KING, side);
-    if (bb) return Square(pop_lsb(bb));
+    if (bb)
+        return Square(pop_lsb(bb));
 
     return SQ_NONE;
 }
-Value see(Board& board, Move move) {
+Value see(Board &board, Move move) {
     Square from = move.from();
-    Square to   = move.to();
+    Square to = move.to();
 
-    PieceType captured =
-        move.type_of() == EN_PASSANT ? PAWN : board.at<PieceType>(to);
+    PieceType captured = move.type_of() == EN_PASSANT ? PAWN : board.at<PieceType>(to);
 
     if (captured == NO_PIECE_TYPE)
         return 0;
 
     Bitboard occ = board.occ();
-    occ ^= 1ULL<<from;
+    occ ^= 1ULL << from;
 
-    Bitboard attackers =
-        board.attackers(WHITE, to, occ) |
-        board.attackers(BLACK, to, occ);
+    Bitboard attackers = board.attackers(WHITE, to, occ) | board.attackers(BLACK, to, occ);
 
     Value gain[32];
     PieceType attacker = board.at<PieceType>(move.from());
@@ -85,12 +86,10 @@ Value see(Board& board, Move move) {
         Square sq = least_valuable_attacker(board, stmAttackers, stm);
         attacker = board.at<PieceType>(sq);
 
-        occ ^= 1ULL<<sq;
+        occ ^= 1ULL << sq;
 
         // Recompute x-rays after EVERY removal.
-        attackers =
-            board.attackers(WHITE, to, occ) |
-            board.attackers(BLACK, to, occ);
+        attackers = board.attackers(WHITE, to, occ) | board.attackers(BLACK, to, occ);
 
         stm = ~stm;
     }

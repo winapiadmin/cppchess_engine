@@ -340,12 +340,10 @@ Value doSearch(
         if (moves.size() <= 5) {
             bool singular = true;
             for (size_t si = 0; si < moves.size() && singular; ++si) {
-                if (ply == 0 &&
-                    !session.tc.searchmoves.empty() &&
+                if (ply == 0 && !session.tc.searchmoves.empty() &&
                     std::find(session.tc.searchmoves.begin(),
                               session.tc.searchmoves.end(),
-                              chess::uci::moveToUci(moves[si], board.chess960()))
-                        == session.tc.searchmoves.end())
+                              chess::uci::moveToUci(moves[si], board.chess960())) == session.tc.searchmoves.end())
                     continue;
                 if (moves[si] == ttMove)
                     continue;
