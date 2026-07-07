@@ -60,7 +60,7 @@ void Tune::make_option(OptionsMap *opts, const string &n, int v, const SetRange 
 
     opts->add(n, Option(v, r(v).first, r(v).second, on_tune));
     LastOption = &((*opts)[n]);
-    auto &[a, b] = r(v);
+    auto [a, b] = r(v);
     if (!(a <= v && v <= b)) {
         std::cerr << "wrong bounds, name: " << n << '\n';
         std::exit(1);
@@ -72,10 +72,10 @@ void Tune::make_option(OptionsMap *opts, const string &n, int v, const SetRange 
                           // or OpenBench
               << "int" << ","
 #endif
-              << v << ","                                 //
-              << r(v).first << ","                        //
-              << r(v).second << ","                       //
-              << (r(v).second - r(v).first) / 20.0 << "," //
+              << v << ","                      //
+              << a << ","                      //
+              << b << ","                      //
+              << (b - a) / 20.0 << ","         //
               << "0.0020" << std::endl;
 }
 
