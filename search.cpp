@@ -508,8 +508,6 @@ Value doSearch(
 std::string extract_pv(const chess::Position &root, int maxPly) {
     std::string pv;
     chess::Position pos = root;
-    std::unordered_set<uint64_t> visited;
-    visited.insert(pos.hash());
     for (int ply = 0; ply < maxPly; ply++) {
         if (pos.is_draw(3))
             break;
@@ -533,8 +531,6 @@ std::string extract_pv(const chess::Position &root, int maxPly) {
         if (ply + 1 >= maxPly)
             break;
         pos.doMove(m);
-        if (!visited.insert(pos.hash()).second)
-            break;
     }
     return pv;
 }

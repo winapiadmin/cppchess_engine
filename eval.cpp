@@ -41,7 +41,7 @@ TUNE(SetRange(5, 30),
      RookValue,
      SetRange(800, 1000),
      QueenValue);
-TUNE(SetRange(-10, 10), mgMobilityCnt, egMobilityCnt);
+TUNE(SetRange(-50, 70), mgMobilityCnt, egMobilityCnt);
 TUNE(SetRange(0, 30), fianchettoBonus, SetRange(0, 100), trappedBishopPenalty);
 TUNE(SetRange(-20, 20), kingTropismMg, kingTropismEg);
 TUNE(SetRange(0, 30),
@@ -70,7 +70,7 @@ TUNE(SetRange(0, 30),
      isolatedPawnMg,
      SetRange(0, 40),
      isolatedPawnEg);
-TUNE(SetRange(0, 200),
+TUNE(SetRange(0, 400),
      passedBonusMg[1],
      passedBonusMg[2],
      passedBonusMg[3],
@@ -91,7 +91,7 @@ TUNE(SetRange(1, 30),
      kingShelterDecayMg,
      SetRange(1, 10),
      kingShelterDecayEg);
-TUNE(SetRange(-25, 25),
+TUNE(SetRange(-70, 200),
      mg_knight_table,
      mg_bishop_table,
      mg_rook_table,
