@@ -4,6 +4,7 @@
 #include "uci.h"
 #include "ucioption.h"
 #include <iostream>
+#include <new>
 using namespace engine;
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
@@ -13,7 +14,11 @@ int main() {
     std::cout << "cppchess_engine version " << BUILD_VERSION << '\n';
     options.add("Move Overhead", Option(10, 0, 1000));
     options.add("Hash", Option(16, 1, 1 << 25, [](const Option &o) {
-                    search::tt.resize(int(o));
+                    try {
+                        search::tt.resize(int(o));
+                    } catch (std::bad_alloc &) {
+                        std::cerr << "info string Hash resize failed: bad_alloc\n";
+                    }
                     return std::nullopt;
                 }));
 
@@ -22,11 +27,11 @@ int main() {
 
                     return std::nullopt;
                 }));
-    // work in progress
     options.add("SyzygyPath", Option("", [](const Option &o) {
                     tb::init(std::string(o));
                     return std::nullopt;
                 }));
     Tune::init(options);
+    std::cout.flush();
     loop();
 }

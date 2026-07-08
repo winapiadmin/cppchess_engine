@@ -66,7 +66,7 @@ void handlePosition(std::istringstream &is) {
     try {
         pos.setFEN(strip_optional_quotes(fen));
     } catch (const std::exception &e) {
-        std::cerr << "info string Invalid FEN: " << e.what() << std::endl;
+        std::cout << "info string Invalid FEN: " << e.what() << std::endl;
         return;
     }
 
@@ -74,7 +74,7 @@ void handlePosition(std::istringstream &is) {
         try {
             pos.push_uci(token);
         } catch (const std::exception &e) {
-            std::cerr << "info string Invalid move " << token << ": " << e.what() << std::endl;
+            std::cout << "info string Invalid move " << token << ": " << e.what() << std::endl;
             return;
         }
     }
@@ -238,8 +238,12 @@ void execCmd(const std::string &line) {
             std::string weights_header = "Weights.h";
             ss >> weights_header;
             std::fstream file(weights_header, std::ios::out);
-            Tune::export_weights(file);
-            std::cout << "Dumped weights to " << weights_header << '\n';
+            if (file.is_open()) {
+                Tune::export_weights(file);
+                std::cout << "info string dumped weights to " << weights_header << '\n';
+            } else {
+                std::cout << "info string failed to open " << weights_header << " for writing\n";
+            }
             break;
         } else if (token == "tune") {
 #ifdef USE_CSV_PARSER

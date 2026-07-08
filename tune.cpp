@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <climits>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -76,7 +77,7 @@ void Tune::make_option(OptionsMap *opts, const string &n, int v, const SetRange 
               << a << ","              //
               << b << ","              //
               << (b - a) / 20.0 << "," //
-              << "0.0020" << std::endl;
+              << "0.0020" << '\n';
 }
 
 string Tune::next(string &names, bool pop) {

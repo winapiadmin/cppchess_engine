@@ -300,9 +300,9 @@ void accumulate_gradient(const chess::Position &board,
             auto it_mg = addr_to_idx.find(&bishopPairMg);
             auto it_eg = addr_to_idx.find(&bishopPairEg);
             if (it_mg != addr_to_idx.end())
-                gradient[it_mg->second] += common_factor * eff;
+                gradient[it_mg->second] += common_factor * eff * phase_mg;
             if (it_eg != addr_to_idx.end())
-                gradient[it_eg->second] += common_factor * eff;
+                gradient[it_eg->second] += common_factor * eff * phase_eg;
         }
     }
 
@@ -851,8 +851,8 @@ void texel_tune(TuneData &all,
 
         double hold_loss = eval_loss(all, holdout_idx);
 
-        if (new_loss < best_loss) {
-            best_loss = new_loss;
+        if (hold_loss < best_loss) {
+            best_loss = hold_loss;
             for (int i = 0; i < dim; i++)
                 best_x[i] = *params[i].value_ptr;
         }
@@ -874,12 +874,23 @@ void texel_tune(TuneData &all,
 
     // Export the best weights found
     std::fstream file(weights_header, std::ios::out);
-    Tune::export_weights(file);
+    if (file.is_open())
+        Tune::export_weights(file);
+    else
+        std::cerr << "info string failed to open " << weights_header << " for writing\n";
 }
 
 } // namespace
 
 void tune_command(const std::string &csv_path, int iterations, int max_pos, const std::string &weights_header) {
+    if (max_pos <= 0) {
+        std::cerr << "info string max_pos must be positive\n";
+        return;
+    }
+    if (iterations <= 0) {
+        std::cerr << "info string iterations must be positive\n";
+        return;
+    }
     auto start_time = std::chrono::steady_clock::now();
 
     csv::CSVReader reader(csv_path);
@@ -903,6 +914,10 @@ void tune_command(const std::string &csv_path, int iterations, int max_pos, cons
                 all.results[j] = result;
             }
         }
+    }
+    if (all.size() == 0) {
+        std::cerr << "info string no positions loaded from CSV\n";
+        return;
     }
     std::cout << "info string loaded " << all.size() << " positions via reservoir sampling (seen " << seen << ")" << std::endl;
 
@@ -936,7 +951,10 @@ void tune_command(const std::string &csv_path, int iterations, int max_pos, cons
     std::cout << "info string tune done in " << elapsed << "s, best holdout=" << final_hold * holdout_size
               << " (baseline=" << base_hold * holdout_size << ")" << std::endl;
     std::fstream file(weights_header, std::ios::out);
-    Tune::export_weights(file);
+    if (file.is_open())
+        Tune::export_weights(file);
+    else
+        std::cerr << "info string failed to open " << weights_header << " for writing\n";
 }
 
 } // namespace engine

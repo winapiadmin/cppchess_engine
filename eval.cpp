@@ -712,12 +712,14 @@ EvalComponents eval_components(const chess::Position &board) {
         board.count<ROOK>() == 0 && board.count<QUEEN>() == 0)
         return { 0, 0, 0 };
 
-    phase = (phase * 256 + TotalPhase / 2) / TotalPhase;
+    phase = std::min((phase * 256 + TotalPhase / 2) / TotalPhase, 256);
     return { mgScore, egScore, phase };
 }
 Value eval(const chess::Position &board) {
     const int sign = board.side_to_move() == WHITE ? 1 : -1;
     auto [mg, eg, phase] = eval_components(board);
+    if (mg == 0 && eg == 0)
+        return 0;
     return (((mg * phase) + (eg * (256 - phase))) * sign) / 256 + engine::eval::tempo;
 }
 Value piece_value(PieceType pt) {

@@ -28,9 +28,13 @@ void init(const std::string &path) {
         return;
     }
 
-    tbprobe::syzygy::initialize();
-    tablebase.add_directory(path, true, true);
-    std::cout << "info string Found " << wdl_count() << " WDL and " << dtz_count() << " DTZ tablebase files\n";
+    try {
+        tbprobe::syzygy::initialize();
+        tablebase.add_directory(path, true, true);
+        std::cout << "info string Found " << wdl_count() << " WDL and " << dtz_count() << " DTZ tablebase files\n";
+    } catch (const std::exception &e) {
+        std::cout << "info string Syzygy init failed: " << e.what() << '\n';
+    }
 }
 
 std::size_t wdl_count() { return unique_table_count(tablebase.wdl); }

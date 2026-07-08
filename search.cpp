@@ -72,6 +72,7 @@ Value qsearch(Position &board, Value alpha, Value beta, search::Session &session
     session.qnodes++;
     session.seldepth = std::max(session.seldepth, ply);
     if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
+        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) ||
         stopSearch.load(std::memory_order_relaxed))
         return VALUE_NONE;
 
@@ -187,6 +188,7 @@ Value doSearch(
     if (depth <= 0)
         return qsearch(board, alpha, beta, session, ply);
     if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
+        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) ||
         stopSearch.load(std::memory_order_relaxed))
         return VALUE_NONE;
 
@@ -417,7 +419,8 @@ Value doSearch(
             } else if (movesSearched >= 6) {
                 reduction = 1 + movesSearched / 8;
             }
-            reduction = std::clamp(reduction, 1, depth - 2);
+            if (reduction > 0)
+                reduction = std::clamp(reduction, 1, depth - 2);
         }
 
         int ext = 0;
@@ -569,7 +572,10 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
         Position board_ = board;
         Move best = Move::none();
         Value bestScore = -VALUE_INFINITE;
-        Session tmpSession{};
+        double unusedTimeAdjust = -1;
+        Session tmpSession;
+        tmpSession.tc = session.tc;
+        tmpSession.tm.init(session.tc, board.side_to_move(), board.ply(), unusedTimeAdjust);
         for (Move move : moves) {
             if (!session.tc.searchmoves.empty() &&
                 std::find(session.tc.searchmoves.begin(),
@@ -669,7 +675,10 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
                 Position board_ = board;
                 Move best = Move::none();
                 Value bestScore = -VALUE_INFINITE;
-                Session tmpSession{};
+                double unusedTimeAdjust = -1;
+                Session tmpSession;
+                tmpSession.tc = session.tc;
+                tmpSession.tm.init(session.tc, board.side_to_move(), board.ply(), unusedTimeAdjust);
                 for (Move move : moves) {
                     if (!session.tc.searchmoves.empty() &&
                         std::find(session.tc.searchmoves.begin(),

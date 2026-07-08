@@ -58,6 +58,8 @@ Value see(Position &board, Move move) {
 
     Bitboard occ = board.occ();
     occ ^= 1ULL << from;
+    if (move.type_of() == EN_PASSANT)
+        occ ^= 1ULL << Square(int(to) + (board.side_to_move() == WHITE ? -8 : 8));
 
     Bitboard attackers = board.attackers(WHITE, to, occ) | board.attackers(BLACK, to, occ);
 
@@ -77,9 +79,7 @@ Value see(Position &board, Move move) {
         if (gain[d] < 0)
             break;
 
-        occ &= attackers;
-
-        Bitboard stmAttackers = attackers & occ & board.occ(stm);
+        Bitboard stmAttackers = attackers & board.occ(stm);
         if (!stmAttackers)
             break;
 

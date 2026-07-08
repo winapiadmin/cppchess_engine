@@ -83,7 +83,7 @@ struct TTEntry {
 };
 class TranspositionTable {
     TTEntry *table;
-    int buckets; // number of buckets (pairs)
+    size_t buckets; // number of buckets (pairs)
     uint32_t time;
 
   public:

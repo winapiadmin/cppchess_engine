@@ -19,8 +19,8 @@ static inline uint64_t index_for_hash(uint64_t hash, uint64_t buckets) {
     __uint128_t prod = (__uint128_t)hash * (__uint128_t)buckets;
     return (uint64_t)(prod >> 64);
 #else
-    uint64_t aL = uint32_t(hash), aH = a >> 32;
-    uint64_t bL = uint32_t(buckets), bH = b >> 32;
+    uint64_t aL = uint32_t(hash), aH = hash >> 32;
+    uint64_t bL = uint32_t(buckets), bH = buckets >> 32;
     uint64_t c1 = (aL * bL) >> 32;
     uint64_t c2 = aH * bL + c1;
     uint64_t c3 = aL * bH + uint32_t(c2);
@@ -56,7 +56,7 @@ void TranspositionTable::store(uint64_t hash, chess::Move best, int16_t score, i
 }
 
 TTEntry *TranspositionTable::lookup(uint64_t hash) {
-    if (buckets == 0)
+    if (buckets == 0 || hash == 0)
         return nullptr;
 
     uint64_t bucket = index_for_hash(hash, buckets);
