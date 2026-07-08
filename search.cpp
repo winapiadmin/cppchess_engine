@@ -584,7 +584,7 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
             }
             board_.undoMove();
         }
-        lastPV[0]=best;
+        lastPV[0] = best;
     }
 
     for (int i = 1; i <= timecontrol.depth; i++) {
