@@ -132,7 +132,7 @@ static constexpr int RookPhase = 2;
 static constexpr int QueenPhase = 4;
 static constexpr int TotalPhase = KnightPhase * 4 + BishopPhase * 4 + RookPhase * 4 + QueenPhase * 2;
 
-int compute_game_phase(const chess::Board &board) {
+int compute_game_phase(const chess::Position &board) {
     int phase = 0;
     chess::Bitboard occ = board.occ();
     while (occ) {
@@ -150,7 +150,7 @@ int compute_game_phase(const chess::Board &board) {
     return (phase * 256 + TotalPhase / 2) / TotalPhase;
 }
 
-void accumulate_gradient(const chess::Board &board,
+void accumulate_gradient(const chess::Position &board,
                          double common_factor,
                          const std::unordered_map<int *, int> &addr_to_idx,
                          double phase_mg,

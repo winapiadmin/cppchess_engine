@@ -102,7 +102,7 @@ class TranspositionTable {
     ~TranspositionTable() { delete[] table; }
 
     void resize(int sizeInMB) {
-        int new_size = sizeInMB * 1048576 / sizeof(TTEntry);
+        size_t new_size = sizeInMB * 1048576LL / sizeof(TTEntry);
         if (new_size % 2 != 0)
             new_size--;
 

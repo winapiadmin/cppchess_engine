@@ -19,7 +19,7 @@ struct Session {
     chess::Color ogcolor;
 };
 void stop();
-void search(const chess::Board &, const timeman::LimitsType);
+void search(const chess::Position &, const timeman::LimitsType);
 bool isStopped();
 extern engine::TranspositionTable tt;
 } // namespace engine::search

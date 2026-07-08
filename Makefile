@@ -30,7 +30,8 @@ endif
 deps:
 	test -d deps/chesslib || git clone https://github.com/winapiadmin/chesslib deps/chesslib
 	test -d deps/tbprobe || git clone https://github.com/winapiadmin/tb_probing_tool deps/tbprobe
-SRCS = $(wildcard *.cpp) $(wildcard deps/chesslib/*.cpp) $(wildcard deps/tbprobe/*.cpp)
+# Tuning is not required on Makefile, use CMake.
+SRCS = $(filter-out tuning_cmd.cpp, $(wildcard *.cpp)) $(wildcard deps/chesslib/*.cpp) $(wildcard deps/tbprobe/*.cpp)
 OBJS = $(SRCS:.cpp=.o)
 
 all: deps $(TARGET)

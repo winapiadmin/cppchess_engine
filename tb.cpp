@@ -37,7 +37,7 @@ std::size_t wdl_count() { return unique_table_count(tablebase.wdl); }
 
 std::size_t dtz_count() { return unique_table_count(tablebase.dtz); }
 
-int probe_wdl(chess::Board &board) {
+int probe_wdl(chess::Position &board) {
     try {
         return *tablebase.get_wdl(board, TB_ERROR);
     } catch (const std::exception &) {
@@ -45,7 +45,7 @@ int probe_wdl(chess::Board &board) {
     }
 }
 
-int probe_dtz(chess::Board &board) {
+int probe_dtz(chess::Position &board) {
     try {
         return *tablebase.get_dtz(board, TB_ERROR);
     } catch (const std::exception &) {

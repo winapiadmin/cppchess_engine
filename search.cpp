@@ -67,7 +67,7 @@ Value value_from_tt(Value v, int ply, int r50c) {
     return v;
 }
 } // namespace
-Value qsearch(Board &board, Value alpha, Value beta, search::Session &session, int ply) {
+Value qsearch(Position &board, Value alpha, Value beta, search::Session &session, int ply) {
     session.nodes++;
     session.qnodes++;
     session.seldepth = std::max(session.seldepth, ply);
@@ -179,7 +179,7 @@ Value qsearch(Board &board, Value alpha, Value beta, search::Session &session, i
     return best;
 }
 Value doSearch(
-    Board &board, int depth, Value alpha, Value beta, search::Session &session, int ply = 0, Move prevMove = Move::none()) {
+    Position &board, int depth, Value alpha, Value beta, search::Session &session, int ply = 0, Move prevMove = Move::none()) {
     session.nodes++;
     session.seldepth = std::max(session.seldepth, ply);
     if (ply >= MAX_PLY - 1)
@@ -504,9 +504,9 @@ Value doSearch(
     }
     return maxScore;
 }
-std::string extract_pv(const chess::Board &root, int maxPly) {
+std::string extract_pv(const chess::Position &root, int maxPly) {
     std::string pv;
-    chess::Board pos = root;
+    chess::Position pos = root;
     std::unordered_set<uint64_t> visited;
     visited.insert(pos.hash());
     for (int ply = 0; ply < maxPly; ply++) {
@@ -538,7 +538,7 @@ std::string extract_pv(const chess::Board &root, int maxPly) {
     return pv;
 }
 
-void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
+void search(const chess::Position &board, const timeman::LimitsType timecontrol) {
     stopSearch = false;
     tt.newSearch();
     static double originalTimeAdjust = -1;
@@ -564,10 +564,27 @@ void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
     }
 
     {
-        Movelist legal;
-        board.legals(legal);
-        if (legal.size())
-            lastPV[0] = legal[0];
+        Movelist moves;
+        board.legals(moves);
+        Position board_ = board;
+        Move best = Move::none();
+        Value bestScore = -VALUE_INFINITE;
+        Session tmpSession{};
+        for (Move move : moves) {
+            if (!session.tc.searchmoves.empty() &&
+                std::find(session.tc.searchmoves.begin(),
+                          session.tc.searchmoves.end(),
+                          chess::uci::moveToUci(move, board.chess960())) == session.tc.searchmoves.end())
+                continue;
+            board_.doMove(move);
+            Value score = -qsearch(board_, -VALUE_INFINITE, VALUE_INFINITE, tmpSession, 0);
+            if (score > bestScore) {
+                bestScore = score;
+                best = move;
+            }
+            board_.undoMove();
+        }
+        lastPV[0]=best;
     }
 
     for (int i = 1; i <= timecontrol.depth; i++) {
@@ -649,7 +666,7 @@ void search(const chess::Board &board, const timeman::LimitsType timecontrol) {
             board.legals(moves);
 
             if (moves.size()) {
-                Board board_ = board;
+                Position board_ = board;
                 Move best = Move::none();
                 Value bestScore = -VALUE_INFINITE;
                 Session tmpSession{};

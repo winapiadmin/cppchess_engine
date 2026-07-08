@@ -50,8 +50,8 @@ struct EvalComponents {
 extern Value *mgPst[];
 extern Value *egPst[];
 
-Value eval(const chess::Board &board);
-EvalComponents eval_components(const chess::Board &board);
+Value eval(const chess::Position &board);
+EvalComponents eval_components(const chess::Position &board);
 Value piece_value(chess::PieceType pt);
 } // namespace eval
 } // namespace engine

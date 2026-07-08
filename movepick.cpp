@@ -47,7 +47,7 @@ inline Square least_valuable_attacker(const Position &board, Bitboard attackers,
 
     return SQ_NONE;
 }
-Value see(Board &board, Move move) {
+Value see(Position &board, Move move) {
     Square from = move.from();
     Square to = move.to();
 
@@ -100,7 +100,7 @@ Value see(Board &board, Move move) {
     return gain[0];
 }
 
-void orderMoves(Board &board, Movelist &moves, Move ttMove, int ply, const engine::search::Session &session, Move prevMove) {
+void orderMoves(Position &board, Movelist &moves, Move ttMove, int ply, const engine::search::Session &session, Move prevMove) {
     Value scores[300];
     size_t n = moves.size();
     for (size_t i = 0; i < n; ++i) {

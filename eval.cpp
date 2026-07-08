@@ -225,7 +225,7 @@ TUNE(SetRange(1, 50), rammedPawnPenalty);
 TUNE(SetRange(1, 100), rookOnSeventhBonus);
 TUNE(SetRange(1, 50), earlyQueenPenalty);
 
-EvalComponents eval_components(const chess::Board &board) {
+EvalComponents eval_components(const chess::Position &board) {
     constexpr int KnightPhase = 1;
     constexpr int BishopPhase = 1;
     constexpr int RookPhase = 2;
@@ -260,7 +260,8 @@ EvalComponents eval_components(const chess::Board &board) {
             int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
             if (undeveloped >= 2) {
                 mgScore -= s * earlyQueenPenalty;
-                egScore -= s * earlyQueenPenalty;
+                //disabled intentionally in endgames
+                //egScore -= s * earlyQueenPenalty;
             }
         }
     }
@@ -714,7 +715,7 @@ EvalComponents eval_components(const chess::Board &board) {
     phase = (phase * 256 + TotalPhase / 2) / TotalPhase;
     return { mgScore, egScore, phase };
 }
-Value eval(const chess::Board &board) {
+Value eval(const chess::Position &board) {
     const int sign = board.side_to_move() == WHITE ? 1 : -1;
     auto [mg, eg, phase] = eval_components(board);
     return (((mg * phase) + (eg * (256 - phase))) * sign) / 256 + engine::eval::tempo;
