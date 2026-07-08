@@ -72,8 +72,7 @@ Value qsearch(Position &board, Value alpha, Value beta, search::Session &session
     session.qnodes++;
     session.seldepth = std::max(session.seldepth, ply);
     if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
-        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) ||
-        stopSearch.load(std::memory_order_relaxed))
+        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) || stopSearch.load(std::memory_order_relaxed))
         return VALUE_NONE;
 
     bool inCheck = board.is_check();
@@ -188,8 +187,7 @@ Value doSearch(
     if (depth <= 0)
         return qsearch(board, alpha, beta, session, ply);
     if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
-        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) ||
-        stopSearch.load(std::memory_order_relaxed))
+        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) || stopSearch.load(std::memory_order_relaxed))
         return VALUE_NONE;
 
     bool inCheck = board.is_check();
