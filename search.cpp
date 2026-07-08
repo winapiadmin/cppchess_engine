@@ -592,7 +592,7 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
         session.depth = i;
         for (int _ = 0; _ < 64; _++)
             for (int j = 0; j < 64; j++)
-                session.historyHeuristic[_][j] /= 2;
+                session.historyHeuristic[_][j] = session.historyHeuristic[_][j] * 1 / 2;
         auto board_ = board;
         Value score_;
 
