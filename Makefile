@@ -6,6 +6,9 @@ CXXFLAGS ?= -std=c++17 -Wall -Wextra
 OPTFLAGS ?= -O3
 ifeq ($(LTO), yes)
     OPTFLAGS += -flto
+    ifeq ($(findstring clang++,$(CXX)),clang++)
+        LDFLAGS += -fuse-ld=lld
+    endif
 endif
 ifeq ($(debug),no)
     CXXFLAGS += -DNDEBUG
@@ -31,9 +34,23 @@ deps:
 	test -d deps/chesslib || git clone https://github.com/winapiadmin/chesslib deps/chesslib
 	test -d deps/tbprobe || git clone https://github.com/winapiadmin/tb_probing_tool deps/tbprobe
 # Tuning is not required on Makefile, use CMake.
-SRCS = $(filter-out tune_cmd.cpp, $(wildcard *.cpp)) $(wildcard deps/chesslib/*.cpp) $(wildcard deps/tbprobe/*.cpp)
+CHESSLIB_SRCS := $(filter-out %tests.cpp,$(wildcard deps/chesslib/*.cpp))
+SRCS := \
+    $(filter-out tune_cmd.cpp,$(wildcard *.cpp)) \
+    $(CHESSLIB_SRCS) \
+    deps/tbprobe/syzygy/tbprobe.cpp
 OBJS = $(SRCS:.cpp=.o)
+SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
+TAG := $(shell git describe --tags --exact-match 2>/dev/null)
+ifeq ($(debug),yes)
+    BUILD_VERSION := debug-$(SHA)
+else ifneq ($(TAG),)
+    BUILD_VERSION := $(TAG)
+else
+    BUILD_VERSION := release-$(SHA)
+endif
 
+CXXFLAGS += -DBUILD_VERSION=\"$(BUILD_VERSION)\"
 .PHONY: all clean deps
 all: deps $(TARGET)
 
