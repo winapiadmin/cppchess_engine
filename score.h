@@ -39,7 +39,7 @@ class Score {
         int value;
     };
 
-    Score() = default;
+    Score() : score(InternalUnits{VALUE_ZERO}){};
     Score(Value v);
 
     template <typename T> bool is() const { return std::holds_alternative<T>(score); }

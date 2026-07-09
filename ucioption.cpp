@@ -65,12 +65,10 @@ const Option &OptionsMap::operator[](const std::string &name) const {
 // Inits options and assigns idx in the correct printing order
 void OptionsMap::add(const std::string &name, const Option &option) {
     if (!options_map.count(name)) {
-        static size_t insert_order = 0;
-
         options_map[name] = option;
 
         options_map[name].parent = this;
-        options_map[name].idx = insert_order++;
+        options_map[name].idx = options_map.size()-1;
     } else {
         std::cerr << "Option \"" << name << "\" was already added!" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -123,9 +121,22 @@ bool Option::operator!=(const char *s) const { return !(*this == s); }
 Option &Option::operator=(const std::string &v) {
 
     assert(!type.empty());
+    if (type == "spin") {
+        int parsed = 0;
+        std::size_t parsedChars = 0;
+        try {
+            parsed = std::stoi(v, &parsedChars);
+        } catch (...) {
+            return *this;
+        }
+
+        if (parsedChars != v.size() || parsed < min || parsed > max)
+            return *this;
+    }
 
     if ((type != "button" && type != "string" && v.empty()) || (type == "check" && v != "true" && v != "false") ||
-        (type == "spin" && (std::stoi(v) < min || std::stoi(v) > max)))
+        //(type == "spin" && (std::stoi(v) < min || std::stoi(v) > max)))
+        false)
         return *this;
 
     if (type == "combo") {

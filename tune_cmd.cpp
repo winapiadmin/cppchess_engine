@@ -363,16 +363,16 @@ void accumulate_gradient(const chess::Position &board,
                 auto it_mg = addr_to_idx.find(&rookOpenFileMg);
                 auto it_eg = addr_to_idx.find(&rookOpenFileEg);
                 if (it_mg != addr_to_idx.end())
-                    gradient[it_mg->second] += common_factor * eff;
+                    gradient[it_mg->second] += common_factor * eff * phase_mg;
                 if (it_eg != addr_to_idx.end())
-                    gradient[it_eg->second] += common_factor * eff;
+                    gradient[it_eg->second] += common_factor * eff * phase_eg;
             } else if (!hasOwn) {
                 auto it_mg = addr_to_idx.find(&rookSemiOpenFileMg);
                 auto it_eg = addr_to_idx.find(&rookSemiOpenFileEg);
                 if (it_mg != addr_to_idx.end())
-                    gradient[it_mg->second] += common_factor * eff;
+                    gradient[it_mg->second] += common_factor * eff * phase_mg;
                 if (it_eg != addr_to_idx.end())
-                    gradient[it_eg->second] += common_factor * eff;
+                    gradient[it_eg->second] += common_factor * eff * phase_eg;
             }
         }
     }
@@ -514,13 +514,13 @@ void accumulate_gradient(const chess::Position &board,
                 auto it_dmg = addr_to_idx.find(&kingShelterDecayMg);
                 auto it_deg = addr_to_idx.find(&kingShelterDecayEg);
                 if (it_bmg != addr_to_idx.end())
-                    gradient[it_bmg->second] += common_factor * eff_base;
+                    gradient[it_bmg->second] += common_factor * eff_base * phase_mg;
                 if (it_beg != addr_to_idx.end())
-                    gradient[it_beg->second] += common_factor * eff_base;
+                    gradient[it_beg->second] += common_factor * eff_base * phase_eg;
                 if (it_dmg != addr_to_idx.end())
-                    gradient[it_dmg->second] += common_factor * eff_base * (-dist);
+                    gradient[it_dmg->second] += common_factor * eff_base * (-dist) * phase_mg;
                 if (it_deg != addr_to_idx.end())
-                    gradient[it_deg->second] += common_factor * eff_base * (-dist);
+                    gradient[it_deg->second] += common_factor * eff_base * (-dist) * phase_eg;
             };
             if (c == WHITE) {
                 for (int r = (int)kr + 1; r <= std::min(7, (int)kr + 3); r++)
@@ -710,6 +710,7 @@ void texel_tune(TuneData &all,
     size_t n = train_idx.size();
 
     double base_loss = eval_loss(all, train_idx);
+    double base_hold_loss = eval_loss(all, holdout_idx);
     std::cout << "info string texel_tune: dim=" << dim << " positions=" << n << " initial_loss=" << base_loss * train_idx.size()
               << std::endl;
 
@@ -718,7 +719,7 @@ void texel_tune(TuneData &all,
     std::vector<double> best_x(dim);
     for (int i = 0; i < dim; i++)
         best_x[i] = *params[i].value_ptr;
-    double best_loss = base_loss;
+    double best_loss = base_hold_loss;
 
     for (int iter = 0; iter < iterations; iter++) {
         auto t0 = std::chrono::steady_clock::now();

@@ -695,6 +695,8 @@ EvalComponents eval_components(const chess::Position &board) {
     // Draw detection: score 0 for positions where neither side can force a win
     int totalPieces = popcount(board.occ());
     int pawnCount = board.count<PAWN>();
+    if (board.is_insufficient_material())
+        return { 0, 0, 0 };
 
     // KBKB same-colored bishops (no pawns) - drawn
     if (totalPieces == 4 && pawnCount == 0 && board.count<BISHOP>() == 2 && board.count<KNIGHT>() == 0 &&

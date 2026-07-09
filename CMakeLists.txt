@@ -44,10 +44,13 @@ target_include_directories(engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${chesslib
 execute_process(
     COMMAND git rev-parse --short HEAD
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ERROR_QUIET
     OUTPUT_VARIABLE GIT_SHA
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-
+if(GIT_SHA STREQUAL "")
+    set(GIT_SHA "unknown")
+endif()
 execute_process(
     COMMAND git describe --tags --exact-match
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

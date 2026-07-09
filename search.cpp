@@ -197,7 +197,6 @@ Value doSearch(
     if (alpha >= beta)
         return alpha;
 
-    session.pv[ply][0] = Move::none();
     if (board.is_draw(3) || board.is_insufficient_material())
         return VALUE_DRAW;
 
@@ -215,20 +214,14 @@ Value doSearch(
 
             if (flag == EXACT && ply > 0) {
                 session.ttCutoffs++;
-                session.pv[ply][0] = Move(entry->getMove());
-                session.pv[ply][1] = Move::none();
                 return ttScore;
             }
             if (flag == LOWERBOUND && ttScore >= beta && ply > 0) {
                 session.ttCutoffs++;
-                session.pv[ply][0] = Move(entry->getMove());
-                session.pv[ply][1] = Move::none();
                 return ttScore;
             }
             if (flag == UPPERBOUND && ttScore <= alpha && ply > 0) {
                 session.ttCutoffs++;
-                session.pv[ply][0] = Move(entry->getMove());
-                session.pv[ply][1] = Move::none();
                 return ttScore;
             }
         }
@@ -326,7 +319,6 @@ Value doSearch(
     Movelist moves;
     board.legals(moves);
     if (!moves.size()) {
-        session.pv[ply][0] = Move::none();
         return board.checkers() ? mated_in(ply) : 0;
     }
     movepick::orderMoves(board, moves, ttMove, ply, session, prevMove);
@@ -364,6 +356,7 @@ Value doSearch(
     }
 
     Value maxScore = -VALUE_INFINITE;
+    Move bestMove = Move::none();
     int movesSearched = 0;
 
     for (size_t i = 0; i < moves.size(); ++i) {
@@ -463,7 +456,7 @@ Value doSearch(
 
         if (score > maxScore) {
             maxScore = score;
-            update_pv(session.pv[ply], move, session.pv[ply + 1]);
+            bestMove = move;
         }
 
         if (score > alpha) {
@@ -501,7 +494,7 @@ Value doSearch(
     if (maxScore != -VALUE_INFINITE) {
         TTFlag flag = maxScore >= beta ? LOWERBOUND : maxScore <= alphaOrig ? UPPERBOUND : EXACT;
 
-        tt.store(hash, session.pv[ply][0], value_to_tt(maxScore, ply), depth, flag);
+        tt.store(hash, bestMove, value_to_tt(maxScore, ply), depth, flag);
     }
     return maxScore;
 }
@@ -544,7 +537,7 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
     session.tm.init(session.tc, board.side_to_move(), board.ply(), originalTimeAdjust);
     session.lastLogTime = session.tm.elapsed();
     session.ogcolor = board.side_to_move();
-    chess::Move lastPV[MAX_PLY]{};
+    chess::Move lastBestMove{};
     Value prevScore = VALUE_NONE;
 
     if (!session.tc.searchmoves.empty()) {
@@ -584,7 +577,7 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
             }
             board_.undoMove();
         }
-        lastPV[0] = best;
+        lastBestMove = best;
     }
 
     for (int i = 1; i <= timecontrol.depth; i++) {
@@ -647,64 +640,20 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
         size_t sp = pvStr.find(' ');
         std::string firstMove = (sp == std::string::npos) ? pvStr : pvStr.substr(0, sp);
         if (!firstMove.empty())
-            lastPV[0] = chess::Move(chess::uci::uciToMove(board, firstMove).raw());
+            lastBestMove = chess::Move(chess::uci::uciToMove(board, firstMove).raw());
         std::stringstream ss;
         ss << "qnodes " << session.qnodes << " lmrResearches " << session.lmrResearches << " ttHits " << session.ttHits
            << " ttCutoffs " << session.ttCutoffs << " nullCutoffs " << session.nullCutoffs;
         info.extrainfo = ss.str();
         report(info);
     }
-    if (lastPV[0].is_ok())
-        report(chess::uci::moveToUci(lastPV[0], board.chess960()));
+    if (lastBestMove.is_ok())
+        report(chess::uci::moveToUci(lastBestMove, board.chess960()));
     else {
         std::cerr << "info string Warning: Did not search\n";
         TTEntry *entry = tt.lookup(board.hash());
         if (entry && entry->getMove() != Move::none().raw())
             report(chess::uci::moveToUci(Move(entry->getMove()), board.chess960()));
-        else {
-            Movelist moves;
-            board.legals(moves);
-
-            if (moves.size()) {
-                Position board_ = board;
-                Move best = Move::none();
-                Value bestScore = -VALUE_INFINITE;
-                double unusedTimeAdjust = -1;
-                Session tmpSession;
-                tmpSession.tc = session.tc;
-                tmpSession.tm.init(session.tc, board.side_to_move(), board.ply(), unusedTimeAdjust);
-                for (Move move : moves) {
-                    if (!session.tc.searchmoves.empty() &&
-                        std::find(session.tc.searchmoves.begin(),
-                                  session.tc.searchmoves.end(),
-                                  chess::uci::moveToUci(move, board.chess960())) == session.tc.searchmoves.end())
-                        continue;
-                    board_.doMove(move);
-                    Value score = -qsearch(board_, -VALUE_INFINITE, VALUE_INFINITE, tmpSession, 0);
-                    if (score > bestScore) {
-                        bestScore = score;
-                        best = move;
-                    }
-                    board_.undoMove();
-                }
-
-                if (best.is_ok()) {
-                    InfoFull info{};
-                    info.depth = 1;
-                    info.nodes = 1;
-                    info.score = 0;
-                    info.multiPV = 1;
-                    info.pv = std::string(chess::uci::moveToUci(best, board.chess960()));
-                    report(info);
-
-                    report(chess::uci::moveToUci(best, board.chess960()));
-                } else {
-                    report("0000");
-                }
-            } else {
-                report("0000");
-            }
-        }
     }
 }
 } // namespace engine::search

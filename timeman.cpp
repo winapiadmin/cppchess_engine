@@ -23,7 +23,7 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply, double &
     // If we have no time, we don't need to fully initialize TM.
     // startTime is used by movetime and useNodesTime is used in elapsed calls.
     startTime = limits.startTime;
-    if (limits.movetime != 0 && limits.time[us] == 0) {
+    if (limits.movetime != 0) {
         optimumTime = maximumTime = TimePoint(limits.movetime);
         return;
     }
@@ -77,8 +77,9 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply, double &
     }
 
     // Limit the maximum possible time for this move
-    optimumTime = TimePoint(optScale * timeLeft);
-    maximumTime = TimePoint(std::min(0.825179 * time - moveOverhead, maxScale * optimumTime)) - 10;
+    optimumTime = std::max(TimePoint(1), TimePoint(optScale * timeLeft));
+    const TimePoint maxCandidate = TimePoint(std::min(0.825179 * time - moveOverhead, maxScale * optimumTime)) - 10;
+    maximumTime = std::max(optimumTime, maxCandidate);
 }
 
 } // namespace engine::timeman

@@ -33,11 +33,12 @@ endif
 deps:
 	test -d deps/chesslib || git clone https://github.com/winapiadmin/chesslib deps/chesslib
 	test -d deps/tbprobe || git clone https://github.com/winapiadmin/tb_probing_tool deps/tbprobe
+all: deps
+	@$(MAKE) --no-print-directory $(TARGET)
 # Tuning is not required on Makefile, use CMake.
-CHESSLIB_SRCS := $(filter-out %tests.cpp,$(wildcard deps/chesslib/*.cpp))
 SRCS := \
     $(filter-out tune_cmd.cpp,$(wildcard *.cpp)) \
-    $(CHESSLIB_SRCS) \
+    $(filter-out %tests.cpp,$(wildcard deps/chesslib/*.cpp)) \
     deps/tbprobe/syzygy/tbprobe.cpp
 OBJS = $(SRCS:.cpp=.o)
 SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
@@ -52,7 +53,6 @@ endif
 
 CXXFLAGS += -DBUILD_VERSION=\"$(BUILD_VERSION)\"
 .PHONY: all clean deps
-all: deps $(TARGET)
 
 $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $(TARGET) $(OBJS)

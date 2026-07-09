@@ -136,7 +136,7 @@ template <typename... Ts> overload(Ts...) -> overload<Ts...>;
 std::string engine::format_score(const Score &s) {
     const auto format =
         overload{ [](Score::Mate mate) -> std::string {
-                     auto m = (mate.plies > 0 ? (mate.plies + 1) : mate.plies) / 2;
+                     auto m = mate.plies > 0 ? (mate.plies + 1) : (mate.plies - 1) / 2;
                      return std::string("mate ") + std::to_string(m);
                  },
                   [](Score::Tablebase tb) -> std::string {
@@ -208,20 +208,26 @@ void execCmd(const std::string &line) {
             std::cout << "readyok\n";
             break;
         } else if (token == "position") {
+            stop();
             handlePosition(ss);
             break;
         } else if (token == "go") {
+            stop();
             handleGo(ss);
             break; // rest belongs to go
         } else if (token == "ucinewgame") {
+            stop();
             search::tt.clear();
             break;
         } else if (token == "stop") {
+            stop();
             break;
         } else if (token == "quit") {
+            stop();
             quit = true;
             return;
         } else if (token == "setoption") {
+            stop();
             options.setoption(ss);
             break;
         } else if (token == "visualize" || token == "d") {
@@ -246,6 +252,7 @@ void execCmd(const std::string &line) {
             }
             break;
         } else if (token == "tune") {
+            stop();
 #ifdef USE_CSV_PARSER
             std::string csv_path, out_file = "Weights.h";
             int iters = 50, max_pos = 20000;
@@ -288,10 +295,7 @@ void engine::loop() {
     pos.setFEN(chess::Position::START_FEN);
 
     while (!quit && std::getline(std::cin, line)) {
-        stop();
         execCmd(line);
     }
     stop();
-    if (searchThread.joinable())
-        searchThread.join();
 }

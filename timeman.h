@@ -1,7 +1,8 @@
 #pragma once
-#include <chrono>
 #include <types.h>
+#include <chrono>
 #include <vector>
+#include <string>
 namespace engine::timeman {
 using TimePoint = std::chrono::milliseconds::rep;
 constexpr TimePoint INFINITE_TIME = 864000000;
@@ -14,7 +15,7 @@ struct LimitsType {
 
     // Init explicitly due to broken value-initialization of non POD in MSVC
     LimitsType() {
-        time[chess::WHITE] = time[chess::BLACK] = inc[chess::WHITE] = inc[chess::BLACK] = movetime = TimePoint(0);
+        time[chess::WHITE] = time[chess::BLACK] = inc[chess::WHITE] = inc[chess::BLACK] = movetime = startTime = TimePoint(0);
         movestogo = mate = perft = infinite = 0;
         depth = 64;
         nodes = 0;
