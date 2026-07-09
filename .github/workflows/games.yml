@@ -28,6 +28,9 @@ on:
         required: false
         default: "engine"
 
+permissions:
+  contents: read
+
 jobs:
 
   build-new:
