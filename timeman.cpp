@@ -1,110 +1,85 @@
-#include "timeman.hpp"
-#include <iostream>
+#include "timeman.h"
+#include "uci.h"
+#include "ucioption.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
+#include <iostream>
 #include <limits>
+namespace engine::timeman {
 
-namespace timeman
-{
-    using namespace std::chrono;
+TimePoint TimeManagement::optimum() const { return optimumTime; }
+TimePoint TimeManagement::maximum() const { return maximumTime; }
 
-    // Global state
-    TimeControl current_tc; // store the whole TimeControl struct globally
-    time_point<high_resolution_clock> start_time;
-    milliseconds inc = milliseconds(0);
-    milliseconds time_limit = milliseconds(0);
-    int moves_to_go = 40;
-    int depth = 0;
-    std::array<int, MAX_PLY> times{};
-    bool infinite = false;
+void TimeManagement::clear() {}
 
-    constexpr int MIN_SAFE_BUFFER_MS = 100;
-    constexpr double BUFFER_PERCENTAGE = 0.05;
-    constexpr int MIN_PER_MOVE = 400;
-    constexpr int MAX_PER_MOVE = 3000;
-    constexpr double PHASE_SCALE_OPENING = 0.7;
-    constexpr double PHASE_SCALE_MIDDLE = 1.0;
-    constexpr double PHASE_SCALE_ENDGAME = 1.25;
-    constexpr int OPENING_DEPTH = 5;
-    constexpr int MIDDLE_DEPTH = 10;
+// Called at the beginning of the search and calculates
+// the bounds of time allowed for the current game ply. We currently support:
+//      1) x basetime (+ z increment)
+//      2) x moves in y seconds (+ z increment)
+void TimeManagement::init(LimitsType &limits, chess::Color us, int ply, double &originalTimeAdjust) {
 
-    double get_phase_scale(int current_depth)
-    {
-        if (current_depth <= OPENING_DEPTH)
-            return PHASE_SCALE_OPENING;
-        else if (current_depth <= MIDDLE_DEPTH)
-            return PHASE_SCALE_MIDDLE;
-        else
-            return PHASE_SCALE_ENDGAME;
+    // If we have no time, we don't need to fully initialize TM.
+    // startTime is used by movetime and useNodesTime is used in elapsed calls.
+    startTime = limits.startTime;
+    if (limits.movetime != 0) {
+        optimumTime = maximumTime = TimePoint(limits.movetime);
+        return;
+    }
+    if (limits.time[us] == 0 && limits.movetime == 0) {
+        optimumTime = maximumTime = INFINITE_TIME;
+        return;
+    }
+    // optScale is a percentage of available time to use for the current move.
+    // maxScale is a multiplier applied to optimumTime.
+    double optScale, maxScale;
+
+    // These numbers are used where multiplications, divisions or comparisons
+    // with constants are involved.
+    const TimePoint time = limits.time[us];
+    const int moveOverhead = options["Move Overhead"];
+    // Maximum move horizon
+    int centiMTG = limits.movestogo ? std::min(limits.movestogo * 100, 5000) : 5051;
+
+    // If less than one second, gradually reduce mtg
+    if (time < 1000)
+        centiMTG = int(time * 5.051);
+
+    // Make sure timeLeft is > 0 since we may use it as a divisor
+    TimePoint timeLeft =
+        std::max(TimePoint(1), time + (limits.inc[us] * (centiMTG - 100) - moveOverhead * (200 + centiMTG)) / 100);
+
+    // x basetime (+ z increment)
+    // If there is a healthy increment, timeLeft can exceed the actual available
+    // game time for the current move, so also cap to a percentage of available
+    // game time.
+    if (limits.movestogo == 0) {
+        // Extra time according to timeLeft
+        if (originalTimeAdjust < 0)
+            originalTimeAdjust = 0.3128 * std::log10(timeLeft) - 0.4354;
+
+        // Calculate time constants based on current time left.
+        double logTimeInSec = std::log10(time / 1000.0);
+        double optConstant = std::min(0.0032116 + 0.000321123 * logTimeInSec, 0.00508017);
+        double maxConstant = std::max(3.3977 + 3.03950 * logTimeInSec, 2.94761);
+
+        optScale = std::min(0.0121431 + std::pow(ply + 2.94693, 0.461073) * optConstant, 0.213035 * time / timeLeft) *
+                   originalTimeAdjust;
+
+        maxScale = std::min(6.67704, maxConstant + ply / 11.9847);
     }
 
-    void reset_start_time()
-    {
-        start_time = high_resolution_clock::now();
-    }
-void setLimits(const TimeControl &tc)
-{
-    current_tc = tc;
-    infinite = tc.infinite;
-    moves_to_go = std::max(1, tc.movestogo);
-    depth = tc.depth;
-
-    if (infinite && tc.depth > 0) {
-        time_limit = milliseconds::max();
-        inc = milliseconds(0);
-        std::cout << "[TimeMan] Infinite or fixed depth mode.\n";
-    }
-    else if (tc.movetime >= 0 && tc.movetime < INFINITE_TIME) {
-        // UCI: movetime overrides all other time settings
-        time_limit = milliseconds(tc.movetime);
-        inc = milliseconds(0);
-        std::cout << "[TimeMan] Using fixed movetime: " << tc.movetime << " ms\n";
-    }
+    // x moves in y seconds (+ z increment)
     else {
-        // Fall back to clock-based time control
-        int time_left = tc.white_to_move ? tc.wtime : tc.btime;
-        int inc_ms = tc.white_to_move ? tc.winc : tc.binc;
-
-        if (time_left != INFINITE_TIME) {
-            int base_time = time_left / moves_to_go;
-            int safe_time = base_time / 16 + inc_ms;
-            safe_time = std::clamp(safe_time, MIN_PER_MOVE, MAX_PER_MOVE);
-
-            double scale = get_phase_scale(depth);
-            safe_time = static_cast<int>(safe_time * scale);
-
-            time_limit = milliseconds(safe_time);
-            inc = milliseconds(inc_ms);
-
-            std::cout << "[TimeMan] Using clock. Left: " << time_left
-                      << " ms, inc: " << inc_ms << " ms, moves_to_go: "
-                      << moves_to_go << ", scaled: " << safe_time << " ms\n";
-        }
+        optScale = std::min((0.88 + ply / 116.4) / (centiMTG / 100.0), 0.88 * time / timeLeft);
+        maxScale = 1.3 + 0.11 * (centiMTG / 100.0);
     }
 
-    reset_start_time();
+    // Limit the maximum possible time for this move
+    optimumTime = std::max(TimePoint(1), TimePoint(optScale * timeLeft));
+    const TimePoint maxCandidate = TimePoint(std::min(0.825179 * time - moveOverhead, maxScale * optimumTime)) - 10;
+    maximumTime = std::max(optimumTime, maxCandidate);
 }
 
-
-    bool check_time()
-    {
-        if (infinite)
-            return false;
-
-        int elapsed = duration_cast<milliseconds>(high_resolution_clock::now() - start_time).count();
-
-        int dynamic_buffer = std::max(MIN_SAFE_BUFFER_MS, static_cast<int>(time_limit.count() * BUFFER_PERCENTAGE));
-
-        bool out_of_time = elapsed + dynamic_buffer >= time_limit.count();
-
-        if (out_of_time)
-        {
-            std::cout << "[TimeMan] Out of time! Elapsed: " << elapsed
-                      << " ms, limit: " << time_limit.count()
-                      << " ms, buffer: " << dynamic_buffer << " ms" << std::endl;
-        }
-
-        return out_of_time;
-    }
-}
+} // namespace engine::timeman

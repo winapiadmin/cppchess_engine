@@ -1,355 +1,659 @@
-#include "search.hpp"
-#include "timeman.hpp"
-#include <cstring>
-#include <chrono>
-#include <cstdio>
-#include <cinttypes>
-#include <algorithm>
+#include "search.h"
+#include "eval.h"
+#include "movepick.h"
+#include "tb.h"
+#include "timeman.h"
+#include "uci.h"
+#include <atomic>
+#include <iostream>
+#include <moves_io.h>
+#include <position.h>
+#include <printers.h>
+#include <sstream>
+#include <unordered_set>
+using namespace chess;
+namespace engine::search {
+TranspositionTable tt(16);
+std::atomic<bool> stopSearch{ false };
+void stop() { stopSearch.store(true, std::memory_order_relaxed); }
+bool isStopped() { return stopSearch.load(std::memory_order_relaxed); }
+namespace {
+void update_pv(Move *pv, Move move, const Move *childPv) {
+    for (*pv++ = move; childPv && *childPv != Move::none();)
+        *pv++ = *childPv++;
+    *pv = Move::none();
+}
+// Adjusts a mate or TB score from "plies to mate from the root" to
+// "plies to mate from the current position". Standard scores are unchanged.
+// The function is called before storing a value in the transposition table.
+Value value_to_tt(Value v, int ply) { return is_win(v) ? v + ply : is_loss(v) ? v - ply : v; }
 
-namespace search
-{
-    struct PV
-    {
-        int8_t cmove;
-        chess::Move pv[MAX_PLY];
-    };
+// Inverse of value_to_tt(): it adjusts a mate or TB score from the transposition
+// table (which refers to the plies to mate/be mated from current position) to
+// "plies to mate/be mated (TB win/loss) from the root". However, to avoid
+// potentially false mate or TB scores related to the 50 moves rule and the
+// graph history interaction, we return the highest non-TB score instead.
+Value value_from_tt(Value v, int ply, int r50c) {
 
-    constexpr int LMR_BONUS = 2;
-    std::atomic<bool> stop_requested(false);
-    PV stablePV;
-    TranspositionTable tt;
-    int seldepth = 0;
+    if (!is_valid(v))
+        return VALUE_NONE;
 
-    struct SearchAbortException : public std::exception
-    {
-        SearchAbortException() = default;
-    };
+    // handle TB win or better
+    if (is_win(v)) {
+        // Downgrade a potentially false mate score
+        if (is_mate(v) && VALUE_MATE - v > 100 - r50c)
+            return VALUE_TB_WIN_IN_MAX_PLY - 1;
 
-    inline bool isMateScore(int16_t score)
-    {
-        return std::abs(score) > MAX_SCORE_CP;
+        // Downgrade a potentially false TB score.
+        if (VALUE_TB - v > 100 - r50c)
+            return VALUE_TB_WIN_IN_MAX_PLY - 1;
+
+        return v - ply;
     }
 
-    int16_t adjustMateScore(int16_t score, int ply)
-    {
-        return isMateScore(score) ? (score > 0 ? score - ply : score + ply) : score;
+    // handle TB loss or worse
+    if (is_loss(v)) {
+        // Downgrade a potentially false mate score.
+        if (is_mated(v) && VALUE_MATE + v > 100 - r50c)
+            return VALUE_TB_LOSS_IN_MAX_PLY + 1;
+
+        // Downgrade a potentially false TB score.
+        if (VALUE_TB + v > 100 - r50c)
+            return VALUE_TB_LOSS_IN_MAX_PLY + 1;
+
+        return v + ply;
     }
 
-    int16_t restoreMateScore(int16_t score, int ply)
-    {
-        return isMateScore(score) ? (score > 0 ? score + ply : score - ply) : score;
-    }
+    return v;
+}
+} // namespace
+Value qsearch(Position &board, Value alpha, Value beta, search::Session &session, int ply) {
+    session.nodes++;
+    session.qnodes++;
+    session.seldepth = std::max(session.seldepth, ply);
+    if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
+        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) || stopSearch.load(std::memory_order_relaxed))
+        return VALUE_NONE;
 
-    int16_t quiescence(chess::Board &board, int16_t alpha, int16_t beta, int ply)
-    {
-        seldepth = std::max(seldepth, ply);
-        if (timeman::check_time() || stop_requested.load(std::memory_order_relaxed))
-            throw SearchAbortException();
+    bool inCheck = board.is_check();
+    if (board.is_draw(3) || board.is_insufficient_material())
+        return VALUE_DRAW;
 
-        ++nodes;
+    Move ttMove = Move::none();
+    TTEntry *entry = search::tt.lookup(board.hash());
+    Value alphaOrig = alpha;
+    if (entry) {
+        session.ttHits++;
+        Value ttScore = value_from_tt(entry->getScore(), ply, board.rule50_count());
 
-        int16_t stand_pat = eval(board);
-        if (stand_pat >= beta)
-            return beta;
-        if (alpha < stand_pat)
-            alpha = stand_pat;
-
-        chess::Movelist moves;
-        chess::movegen::legalmoves(moves, board);
-        if (moves.empty())
-            return board.inCheck() ? -MATE(ply) : 0;
-
-        chess::Movelist tacticalMoves;
-        for (auto mv : moves)
-        {
-            if (board.isCapture(mv) || (mv.typeOf() & chess::Move::PROMOTION) || board.givesCheck(mv) != chess::CheckType::NO_CHECK)
-                tacticalMoves.add(mv);
+        if (entry->getFlag() == EXACT) {
+            session.ttCutoffs++;
+            return ttScore;
         }
+        if (entry->getFlag() == LOWERBOUND && ttScore >= beta) {
+            session.ttCutoffs++;
+            return ttScore;
+        }
+        if (entry->getFlag() == UPPERBOUND && ttScore <= alpha) {
+            session.ttCutoffs++;
+            return ttScore;
+        }
+        if (entry->getFlag() == LOWERBOUND)
+            alpha = std::max(alpha, ttScore);
+        else if (entry->getFlag() == UPPERBOUND)
+            beta = std::min(beta, ttScore);
+        if (alpha >= beta) {
+            session.ttCutoffs++;
+            return ttScore;
+        }
+        ttMove = Move(entry->getMove());
+    }
 
-        movepick::qOrderMoves(board, tacticalMoves);
-        for (auto mv : tacticalMoves)
-        {
-            // --- BEGIN SEE FILTER ---
-            int gain = mv.score(); // Or use precomputed SEE
-            if (board.isCapture(mv) && gain < 0)
+    Movelist moves;
+
+    if (inCheck)
+        board.legals(moves);
+    else
+        board.legals<MoveGenType::CAPTURE>(moves);
+    Value best = -VALUE_INFINITE;
+    Value standPat = VALUE_NONE;
+
+    if (!inCheck) {
+        standPat = eval::eval(board);
+
+        if (standPat >= beta)
+            return standPat;
+
+        if (standPat > alpha)
+            alpha = standPat;
+
+        best = standPat;
+    }
+
+    if (!moves.size())
+        return inCheck ? mated_in(ply) : best;
+    if (ply >= MAX_PLY - 1)
+        return best;
+
+    movepick::orderMoves(board, moves, ttMove, ply, session, Move::none());
+    int movesSearched = 0;
+    for (Move move : moves) {
+        bool isCapture = board.isCapture(move);
+        bool givesCheck = board.givesCheck(move) != CheckType::NO_CHECK;
+
+        if (!is_loss(best)) {
+            if (!isCapture && !givesCheck)
                 continue;
-            // --- END SEE FILTER ---
-
-            // --- BEGIN DELTA PRUNING ---
-            int margin = 50;
-            if (stand_pat + gain + margin < alpha)
-                continue;
-            // --- END DELTA PRUNING ---
-
-            board.makeMove(mv);
-            int16_t score = -quiescence(board, -beta, -alpha, ply + 1);
-            board.unmakeMove(mv);
-
-            if (score >= beta)
-                return beta;
-            if (score > alpha)
-                alpha = score;
-        }
-        return alpha;
-    }
-
-    int16_t alpha_beta(chess::Board &board, int depth, int16_t alpha, int16_t beta, int ply, PV *pv, int ext = 0)
-    {
-        pv->cmove = 0;
-        if (timeman::check_time() || stop_requested.load(std::memory_order_relaxed))
-            throw SearchAbortException();
-
-        uint64_t h = board.hash();
-        TTEntry *entry = tt.lookup(h);
-        chess::Move hash_move = entry ? entry->bestMove : chess::Move::NULL_MOVE;
-
-        if (entry && entry->hash == h && entry->depth() >= depth)
-        {
-            int16_t score = adjustMateScore(entry->score(), ply);
-            if (entry->flag() == TTFlag::LOWERBOUND && score >= beta)
-                return score;
-            if (entry->flag() == TTFlag::UPPERBOUND && score <= alpha)
-                return score;
-            if (entry->flag() == TTFlag::EXACT)
-                return score;
-        }
-
-        chess::Movelist moves;
-        chess::movegen::legalmoves(moves, board);
-        if (moves.empty())
-            return board.inCheck() ? -MATE(ply) : 0;
-
-        if (depth <= 0){
-            ++nodes;
-            return quiescence(board, alpha, beta, ply);
-        }
-
-        bool in_check = board.inCheck();
-        int16_t evalScore = eval(board);
-
-        // --- BEGIN RAZORING ---
-        if (depth <= 2 && !in_check)
-        {
-            if (evalScore + 150 < alpha)
-                return quiescence(board, alpha, beta, ply);
-        }
-        // --- END RAZORING ---
-
-        bool can_do_null = (!in_check) && (depth >= 3);
-        if (can_do_null)
-        {
-            board.makeNullMove();
-            int R = depth / 6;
-            int16_t score = -alpha_beta(board, depth - 1 - R, -beta, -beta + 1, ply + 1, pv);
-            board.unmakeNullMove();
-            if (score >= beta)
-            {
-                tt.store(h, chess::Move::NULL_MOVE, restoreMateScore(score, ply), depth, TTFlag::LOWERBOUND);
-                return score;
-            }
-        }
-
-        bool has_hash = (hash_move != chess::Move::NULL_MOVE);
-        if (!has_hash && depth >= 4)
-        {
-            PV temp;
-            temp.cmove = 0;
-            alpha_beta(board, depth - 2, alpha, beta, ply, &temp);
-            TTEntry *iid = tt.lookup(board.hash());
-            if (iid && iid->bestMove != chess::Move::NULL_MOVE)
-                hash_move = iid->bestMove;
-        }
-
-        movepick::orderMoves(board, moves, hash_move, stablePV.pv[0], ply);
-
-        chess::Move best_move = chess::Move();
-        int16_t best_score = -MATE(0);
-
-        for (int i = 0; i < moves.size(); ++i)
-        {
-            chess::Move mv = moves[i];
-            PV sub_pv;
-            sub_pv.cmove = 0;
-
-            bool isCap = board.isCapture(mv);
-            bool do_lmr = (i > 0) && !isCap && !in_check;
-            bool givesCheck = board.givesCheck(mv) != chess::CheckType::NO_CHECK;
-            bool isPromo = mv.typeOf() & chess::Move::PROMOTION;
-
-            // --- BEGIN FUTILITY PRUNING ---
-            if (depth <= 3 && !in_check && !isCap && !isPromo && !givesCheck)
-            {
-                const int margin = 100 * depth;
-                if (evalScore + margin <= alpha)
+            if (isCapture && !givesCheck && move.type_of() != PROMOTION) {
+                Value capturedValue =
+                    move.type_of() == EN_PASSANT ? eval::piece_value(PAWN) : eval::piece_value(board.at<PieceType>(move.to()));
+                if (standPat + capturedValue + 200 < alpha)
+                    continue;
+                if (movepick::see(board, move) < 0)
                     continue;
             }
-            // --- END FUTILITY PRUNING ---
-
-            // --- BEGIN EXTENSIONS ---
-            int extension = 0;
-            if (givesCheck)
-                extension = 1;
-
-            if (board.at<chess::PieceType>(mv.from()) == chess::PieceType::PAWN && (mv.to().rank() >= chess::Rank::RANK_6))
-            {
-                int rank = board.sideToMove() == chess::Color::WHITE ? (int)mv.to().rank() : 7 - mv.to().rank();
-                if (rank >= 5)
-                    extension += 1;
-            }
-
-            if (moves.size() == 1)
-                extension += 1;
-
-            if (ext + extension > 16)
-                extension = 0;
-
-            int new_depth = depth - 1 + extension;
-            // --- END EXTENSIONS ---
-
-            board.makeMove(mv);
-            int16_t score;
-
-            if (do_lmr && !extension && depth >= 3)
-            {
-                score = -alpha_beta(board, new_depth - LMR_BONUS, -alpha - 1, -alpha, ply + 1, &sub_pv, ext);
-                if (score > alpha)
-                    score = -alpha_beta(board, new_depth, -beta, -alpha, ply + 1, &sub_pv, ext);
-            }
-            else
-            {
-                if (i == 0)
-                    score = -alpha_beta(board, new_depth, -beta, -alpha, ply + 1, &sub_pv, ext + extension);
-                else
-                {
-                    score = -alpha_beta(board, new_depth, -alpha - 1, -alpha, ply + 1, &sub_pv, ext + extension);
-                    if (score > alpha)
-                        score = -alpha_beta(board, new_depth, -beta, -alpha, ply + 1, &sub_pv, ext + extension);
-                }
-            }
-
-            board.unmakeMove(mv);
-
-            if (score > best_score)
-            {
-                best_score = score;
-                best_move = mv;
-                if (score > alpha)
-                {
-                    alpha = score;
-                    pv->pv[0] = mv;
-                    std::memcpy(&pv->pv[1], sub_pv.pv, sizeof(chess::Move) * sub_pv.cmove);
-                    pv->cmove = sub_pv.cmove + 1;
-                }
-            }
-
-            if (score >= beta)
-            {
-                if (!isCap)
-                {
-                    movepick::updateKillerMoves(mv, ply);
-                    movepick::updateHistoryHeuristic(mv, depth);
-                }
-                break;
-            }
         }
 
-        if (best_score != -MATE(0))
-        {
-            TTFlag flag = (best_score >= beta)   ? TTFlag::LOWERBOUND
-                          : (best_score > alpha) ? TTFlag::EXACT
-                                                 : TTFlag::UPPERBOUND;
-            tt.store(h, best_move, restoreMateScore(best_score, ply), depth, flag);
-        }
+        board.doMove(move);
 
-        return best_score;
+        Value score = -qsearch(board, -beta, -alpha, session, ply + 1);
+
+        board.undoMove();
+
+        if (score == VALUE_NONE)
+            return VALUE_NONE;
+
+        if (score > best) {
+            ttMove = move;
+            best = score;
+        }
+        if (score > alpha)
+            alpha = score;
+        if (alpha >= beta)
+            break;
+
+        movesSearched++;
+    }
+    TTFlag flag = best >= beta ? LOWERBOUND : best <= alphaOrig ? UPPERBOUND : EXACT;
+    tt.store(board.hash(), ttMove, value_to_tt(best, ply), 0, flag);
+    return best;
+}
+Value doSearch(
+    Position &board, int depth, Value alpha, Value beta, search::Session &session, int ply = 0, Move prevMove = Move::none()) {
+    session.nodes++;
+    session.seldepth = std::max(session.seldepth, ply);
+    if (ply >= MAX_PLY - 1)
+        return eval::eval(board);
+    if (depth <= 0)
+        return qsearch(board, alpha, beta, session, ply);
+    if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
+        (session.tc.nodes > 0 && session.nodes >= session.tc.nodes) || stopSearch.load(std::memory_order_relaxed))
+        return VALUE_NONE;
+
+    bool inCheck = board.is_check();
+
+    alpha = std::max(mated_in(ply), alpha);
+    beta = std::min(mate_in(ply + 1), beta);
+    if (alpha >= beta)
+        return alpha;
+
+    if (board.is_draw(3) || board.is_insufficient_material())
+        return VALUE_DRAW;
+
+    Value alphaOrig = alpha;
+    uint64_t hash = board.hash();
+    Move ttMove = Move::none();
+    Value staticEval = eval::eval(board);
+
+    TTEntry *entry = search::tt.lookup(hash);
+    if (entry) {
+        if (entry->getDepth() >= depth) {
+            session.ttHits++;
+            Value ttScore = value_from_tt(entry->getScore(), ply, board.rule50_count());
+            TTFlag flag = entry->getFlag();
+
+            if (flag == EXACT && ply > 0) {
+                session.ttCutoffs++;
+                return ttScore;
+            }
+            if (flag == LOWERBOUND && ttScore >= beta && ply > 0) {
+                session.ttCutoffs++;
+                return ttScore;
+            }
+            if (flag == UPPERBOUND && ttScore <= alpha && ply > 0) {
+                session.ttCutoffs++;
+                return ttScore;
+            }
+        }
+        ttMove = Move(entry->getMove());
     }
 
-    void run_search(const chess::Board &board, const TimeControl &tc)
-    {
-        nodes = 0, seldepth = 0;
-        stop_requested.store(false, std::memory_order_relaxed);
-        timeman::setLimits(tc);
+    // Reverse futility pruning: if eval is well above beta, prune
+    if (!inCheck && ply > 0 && depth <= 3 && staticEval - 150 * depth >= beta && !is_win(beta) &&
+        std::abs(beta) < VALUE_TB_WIN_IN_MAX_PLY)
+        return staticEval;
 
-        PV child_pv;
-        child_pv.cmove = 0;
-        stablePV.cmove = 0;
+    // Razoring: if eval is far below alpha, try qsearch to verify
+    if (depth <= 2 && !inCheck && ply > 0 && !is_win(alpha)) {
+        Value razorMargin = Value(256 + 100 * depth);
+        if (staticEval + razorMargin < alpha) {
+            Value v = qsearch(board, alpha - 1, alpha, session, ply);
+            if (v == VALUE_NONE)
+                return VALUE_NONE;
+            if (v < alpha && std::abs(v) < VALUE_TB_WIN_IN_MAX_PLY)
+                return v;
+        }
+    }
 
-        chess::Movelist rootMoves;
-        chess::movegen::legalmoves(rootMoves, board);
+    // Null move pruning (skip when a mate threat is possible)
+    if (depth >= 3 && !inCheck && ply > 0 && staticEval >= beta && !is_win(beta)) {
+        int R = 2 + depth / 6; // + std::min(2, depth / 10);
+        board.doNullMove();
+        Value score = doSearch(board, depth - 1 - R, -beta, -beta + 1, session, ply + 1, Move::none());
+        board.undoMove();
+        if (score == VALUE_NONE)
+            return VALUE_NONE;
+        score = -score;
+        if (score >= beta) {
+            session.nullCutoffs++;
+            return score;
+        }
+    }
 
-        int16_t last_score = 0;
-        int max_iter = std::min(tc.infinite ? MAX_PLY : tc.depth, (int)MAX_PLY);
+    // ProbCut: if eval is well above beta, verify with reduced-depth search
+    if (depth >= 5 && !inCheck && !is_win(beta) && std::abs(beta) < VALUE_TB_WIN_IN_MAX_PLY) {
+        Value probCutMargin = Value(200 + 100 * (depth - 5));
+        if (staticEval >= beta + probCutMargin) {
+            Value v = doSearch(board, depth - 2, beta - 1, beta, session, ply, prevMove);
+            if (v == VALUE_NONE)
+                return VALUE_NONE;
+            if (v >= beta)
+                return v;
+        }
+    }
 
-        for (int current_depth = 1; current_depth <= max_iter; ++current_depth)
-        {
-            chess::Board _board = board;
-            child_pv.cmove = 0;
-            int16_t alpha = last_score - 30;
-            int16_t beta = last_score + 30;
+    // Existing static null-move / futility pruning
+    if (!inCheck && staticEval < alpha - 512 - 293 * depth * depth) {
+        Value value = qsearch(board, alpha - 1, alpha, session, ply);
+        if (value == VALUE_NONE)
+            return VALUE_NONE;
+        if (value < alpha && std::abs(value) < VALUE_TB_WIN_IN_MAX_PLY)
+            return value;
+    }
 
-            try
-            {
-                last_score = alpha_beta(_board, current_depth, alpha, beta, 0, &child_pv);
+    // Tablebase probing (unchanged)
+    if (ply != 0) {
+        if (popcount(board.occ()) <= 7 && board.castlingRights() == NO_CASTLING) {
+            int wdl = engine::tb::probe_wdl(board);
+            if (wdl != engine::tb::TB_ERROR) {
+                session.tbHits++;
 
-                if (last_score <= alpha || last_score >= beta)
-                {
-                    alpha = -MATE(0);
-                    beta = MATE(0);
-                    last_score = alpha_beta(_board, current_depth, alpha, beta, 0, &child_pv);
+                int drawScore = 1;
+
+                Value tbValue = VALUE_TB - ply;
+
+                Value value = wdl < -drawScore ? -tbValue : wdl > drawScore ? tbValue : VALUE_DRAW + 2 * wdl * drawScore;
+                TTFlag b = wdl < -drawScore ? UPPERBOUND : wdl > drawScore ? LOWERBOUND : EXACT;
+                if (b == EXACT || (b == LOWERBOUND ? value >= beta : value <= alpha)) {
+                    tt.store(hash, Move::none(), value_to_tt(value, ply), std::min(MAX_PLY - 1, depth + 6), b);
+                    return value;
                 }
 
-                stablePV = child_pv;
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::high_resolution_clock::now() - timeman::start_time)
-                                   .count();
-
-                if (isMateScore(last_score)){
-					// Confusement: break
-                    printf("info depth %d seldepth %d nodes %" PRIu64 " nps %" PRIu64 " time %u score mate %d pv ",
-                           current_depth,
-                           seldepth,
-                           nodes.load(),
-                           (elapsed == 0 ? 0 : nodes.load() / elapsed * 1000),
-                           elapsed,
-                           last_score > 0 ? (MAX_MATE - last_score) : -(MAX_MATE + last_score));
-				}
-                else
-                    printf("info depth %d seldepth %d nodes %" PRIu64 " nps %" PRIu64 " time %u score cp %d pv ",
-                           current_depth,
-                           seldepth,
-                           nodes.load(),
-                           (elapsed == 0 ? 0 : nodes.load() / elapsed * 1000),
-                           elapsed,
-                           last_score);
-
-                for (int j = 0; j < child_pv.cmove; ++j)
-                    printf("%s ", chess::uci::moveToUci(child_pv.pv[j], board.chess960()).c_str());
-                printf("\n");
-				
-				// [DEBUG] 
-				if (isMateScore(last_score)) break;
-                if (timeman::check_time())
-                    break;
+                if (b == LOWERBOUND)
+                    alpha = std::max(alpha, value);
+                if (alpha >= beta)
+                    return alpha;
             }
-            catch (SearchAbortException &)
-            {
+        }
+    }
+
+    // Internal Iterative Deepening (IID): get a TT move when we don't have one
+    if (depth >= 8 && ttMove == Move::none() && !inCheck && alpha != beta - 1) {
+        int d = std::max(2, depth - 2 - depth / 4);
+        Value v = doSearch(board, d, alpha, beta, session, ply, prevMove);
+        if (v == VALUE_NONE)
+            return VALUE_NONE;
+        if (TTEntry *e = search::tt.lookup(hash))
+            ttMove = Move(e->getMove());
+    }
+    Movelist moves;
+    board.legals(moves);
+    if (!moves.size()) {
+        return board.checkers() ? mated_in(ply) : 0;
+    }
+    movepick::orderMoves(board, moves, ttMove, ply, session, prevMove);
+
+    // Singular Extension: extend TT move when it dominates all others
+    int singularExt = 0;
+    if (depth >= 12 && ttMove.is_ok() && !inCheck && ply > 0 && entry && entry->getDepth() >= depth - 4 &&
+        entry->getFlag() != UPPERBOUND && alpha != beta - 1 && !is_win(beta)) {
+        Value sBeta = std::max(staticEval - 2 * depth, Value(-VALUE_MATE));
+        int r = std::max(2, depth / 4);
+        if (moves.size() <= 5) {
+            bool singular = true;
+            for (size_t si = 0; si < moves.size() && singular; ++si) {
+                if (ply == 0 && !session.tc.searchmoves.empty() &&
+                    std::find(session.tc.searchmoves.begin(),
+                              session.tc.searchmoves.end(),
+                              chess::uci::moveToUci(moves[si], board.chess960())) == session.tc.searchmoves.end())
+                    continue;
+                if (moves[si] == ttMove)
+                    continue;
+                board.doMove(moves[si]);
+                Value v = doSearch(board, r, -sBeta, -sBeta + 1, session, ply + 1, moves[si]);
+                board.undoMove();
+                if (v == VALUE_NONE) {
+                    singular = false;
+                    break;
+                }
+                v = -v;
+                if (v >= sBeta)
+                    singular = false;
+            }
+            if (singular)
+                singularExt = 1;
+        }
+    }
+
+    Value maxScore = -VALUE_INFINITE;
+    Move bestMove = Move::none();
+    int movesSearched = 0;
+
+    for (size_t i = 0; i < moves.size(); ++i) {
+        Move move = moves[i];
+        if (ply == 0 && !session.tc.searchmoves.empty() &&
+            std::find(session.tc.searchmoves.begin(),
+                      session.tc.searchmoves.end(),
+                      chess::uci::moveToUci(move, board.chess960())) == session.tc.searchmoves.end())
+            continue;
+
+        bool isCapture = board.isCapture(move);
+        bool givesCheck = board.givesCheck(move) != CheckType::NO_CHECK;
+
+        // Futility pruning at shallow depths
+        if (!inCheck && !isCapture && !givesCheck && depth <= 2 && ply > 0 && movesSearched > 0) {
+            Value margin = Value(128 + 128 * depth);
+            if (staticEval + margin <= alpha && std::abs(alpha) < VALUE_TB_WIN_IN_MAX_PLY)
+                continue;
+        }
+
+        // Late move pruning at very shallow depths
+        if (!inCheck && !isCapture && !givesCheck && depth <= 2 && movesSearched > 3 + 2 * depth &&
+            std::abs(alpha) < VALUE_TB_WIN_IN_MAX_PLY)
+            continue;
+
+        // SEE pruning for losing captures at shallow depths
+        if (!inCheck && isCapture && !givesCheck && depth <= 2 && movesSearched > 0 && move.type_of() != PROMOTION &&
+            std::abs(alpha) < VALUE_TB_WIN_IN_MAX_PLY) {
+            if (movepick::see(board, move) < 0)
+                continue;
+        }
+
+        // LMR reduction
+        int reduction = 0;
+        if (movesSearched >= 2 && depth >= 3) {
+            if (!isCapture && !givesCheck) {
+                reduction = 1 + movesSearched / 5 + depth / 7;
+                int history = session.historyHeuristic[(int)move.from()][(int)move.to()];
+                if (history > 0)
+                    reduction--;
+                else if (history < 0)
+                    reduction++;
+                if (move == session.killerMoves[ply][0] || move == session.killerMoves[ply][1])
+                    reduction--;
+                if (prevMove.is_ok() && move == session.counterMoves[prevMove.from_to()])
+                    reduction--;
+                if (staticEval + 50 < alphaOrig)
+                    reduction++;
+                else if (staticEval - 50 >= alphaOrig)
+                    reduction--;
+            } else if (movesSearched >= 6) {
+                reduction = 1 + movesSearched / 8;
+            }
+            if (reduction > 0)
+                reduction = std::clamp(reduction, 1, depth - 2);
+        }
+
+        int ext = 0;
+        if (singularExt && movesSearched == 0)
+            ext = 1;
+        if (ext == 0 && moves.size() == 1)
+            ext = 1;
+        if (ext == 0 && isCapture && movesSearched == 0)
+            ext = 1;
+        board.doMove(move);
+
+        Value score;
+
+        if (movesSearched == 0 || reduction == 0) {
+            score = doSearch(board, depth - 1 + ext, -beta, -alpha, session, ply + 1, move);
+            if (score == VALUE_NONE) {
+                board.undoMove();
+                return VALUE_NONE;
+            }
+            score = -score;
+        } else {
+            int d = depth - 1 - reduction + ext;
+            score = doSearch(board, d, -alpha - 1, -alpha, session, ply + 1, move);
+            if (score == VALUE_NONE) {
+                board.undoMove();
+                return VALUE_NONE;
+            }
+            score = -score;
+            if (score > alpha && reduction) {
+                session.lmrResearches++;
+                score = doSearch(board, depth - 1 + ext, -beta, -alpha, session, ply + 1, move);
+                if (score == VALUE_NONE) {
+                    board.undoMove();
+                    return VALUE_NONE;
+                }
+                score = -score;
+            }
+        }
+
+        board.undoMove();
+        movesSearched++;
+
+        if (score > maxScore) {
+            maxScore = score;
+            bestMove = move;
+        }
+
+        if (score > alpha) {
+            alpha = score;
+
+            if (!isCapture) {
+                int bonus = depth * depth;
+                if (is_win(score))
+                    bonus += 4 * depth * depth;
+                session.historyHeuristic[(int)move.from()][(int)move.to()] =
+                    std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + bonus, -16384, 16384);
+            }
+        } /*else if (!isCapture && depth > 0) {
+            int malus = -depth * depth;
+            session.historyHeuristic[(int)move.from()][(int)move.to()] =
+                std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + malus, -16384, 16384);
+        }*/
+
+        if (alpha >= beta) {
+            if (!isCapture) {
+                if (session.killerMoves[ply][0] != move) {
+                    session.killerMoves[ply][1] = session.killerMoves[ply][0];
+                    session.killerMoves[ply][0] = move;
+                }
+                if (prevMove.is_ok())
+                    session.counterMoves[prevMove.from_to()] = move;
+            }
+            break;
+        }
+
+        if (((session.nodes & 2047) == 0 && session.tm.elapsed() >= session.tm.optimum()) ||
+            stopSearch.load(std::memory_order_relaxed))
+            return VALUE_NONE;
+    }
+    if (maxScore != -VALUE_INFINITE) {
+        TTFlag flag = maxScore >= beta ? LOWERBOUND : maxScore <= alphaOrig ? UPPERBOUND : EXACT;
+
+        tt.store(hash, bestMove, value_to_tt(maxScore, ply), depth, flag);
+    }
+    return maxScore;
+}
+std::string extract_pv(const chess::Position &root, int maxPly) {
+    std::string pv;
+    chess::Position pos = root;
+    for (int ply = 0; ply < maxPly; ply++) {
+        if (pos.is_draw(3))
+            break;
+        TTEntry *e = search::tt.lookup(pos.hash());
+        if (!e)
+            break;
+        chess::Move m(e->getMove());
+        if (!m.is_ok())
+            break;
+        chess::Movelist ml;
+        pos.legals(ml);
+        bool legal = false;
+        for (size_t i = 0; i < ml.size(); i++)
+            if (ml[i] == m) {
+                legal = true;
                 break;
             }
-        }
+        if (!legal)
+            break;
+        pv += chess::uci::moveToUci(m, root.chess960()) + " ";
+        if (ply + 1 >= maxPly)
+            break;
+        pos.doMove(m);
+    }
+    return pv;
+}
 
-        if (stablePV.cmove > 0)
-        {
-            printf("bestmove %s\n",
-                   chess::uci::moveToUci(stablePV.pv[0], board.chess960()).c_str());
+void search(const chess::Position &board, const timeman::LimitsType timecontrol) {
+    stopSearch = false;
+    tt.newSearch();
+    static double originalTimeAdjust = -1;
+    Session session;
+    session.tc = timecontrol;
+    session.tm.init(session.tc, board.side_to_move(), board.ply(), originalTimeAdjust);
+    session.lastLogTime = session.tm.elapsed();
+    session.ogcolor = board.side_to_move();
+    chess::Move lastBestMove{};
+    Value prevScore = VALUE_NONE;
+
+    if (!session.tc.searchmoves.empty()) {
+        Movelist legal;
+        board.legals(legal);
+        bool any_legal = false;
+        for (size_t i = 0; i < legal.size() && !any_legal; ++i)
+            if (std::find(session.tc.searchmoves.begin(),
+                          session.tc.searchmoves.end(),
+                          chess::uci::moveToUci(legal[i], board.chess960())) != session.tc.searchmoves.end())
+                any_legal = true;
+        if (!any_legal)
+            session.tc.searchmoves.clear();
+    }
+
+    {
+        Movelist moves;
+        board.legals(moves);
+        Position board_ = board;
+        Move best = Move::none();
+        Value bestScore = -VALUE_INFINITE;
+        double unusedTimeAdjust = -1;
+        Session tmpSession;
+        tmpSession.tc = session.tc;
+        tmpSession.tm.init(session.tc, board.side_to_move(), board.ply(), unusedTimeAdjust);
+        for (Move move : moves) {
+            if (!session.tc.searchmoves.empty() &&
+                std::find(session.tc.searchmoves.begin(),
+                          session.tc.searchmoves.end(),
+                          chess::uci::moveToUci(move, board.chess960())) == session.tc.searchmoves.end())
+                continue;
+            board_.doMove(move);
+            Value score = -qsearch(board_, -VALUE_INFINITE, VALUE_INFINITE, tmpSession, 0);
+            if (score > bestScore) {
+                bestScore = score;
+                best = move;
+            }
+            board_.undoMove();
         }
-        else if (!rootMoves.empty())
-        {
-            printf("bestmove %s\n",
-                   chess::uci::moveToUci(rootMoves[0], board.chess960()).c_str());
+        lastBestMove = best;
+    }
+
+    for (int i = 1; i <= timecontrol.depth; i++) {
+        session.lastLogTime = session.tm.elapsed();
+        session.depth = i;
+        for (int _ = 0; _ < 64; _++)
+            for (int j = 0; j < 64; j++)
+                session.historyHeuristic[_][j] = session.historyHeuristic[_][j] * 1 / 2;
+        auto board_ = board;
+        Value score_;
+
+        if (i >= 3 && prevScore != VALUE_NONE && !is_win(prevScore) && !is_loss(prevScore)) {
+            Value delta = Value(20 + i * 5);
+            Value alpha0 = std::max(prevScore - delta, -VALUE_INFINITE);
+            Value beta0 = std::min(prevScore + delta, VALUE_INFINITE);
+
+            score_ = doSearch(board_, i, alpha0, beta0, session);
+
+            if (score_ != VALUE_NONE && score_ <= alpha0) {
+                score_ = doSearch(board_, i, -VALUE_INFINITE, beta0, session);
+                if (score_ != VALUE_NONE && score_ <= alpha0)
+                    score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
+            } else if (score_ != VALUE_NONE && score_ >= beta0) {
+                score_ = doSearch(board_, i, alpha0, VALUE_INFINITE, session);
+                if (score_ != VALUE_NONE && score_ >= beta0)
+                    score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
+            }
+        } else {
+            score_ = doSearch(board_, i, -VALUE_INFINITE, VALUE_INFINITE, session);
         }
-        else
-        {
-            printf("bestmove 0000\n");
-        }
+        prevScore = score_;
+        if (session.tm.elapsed() >= session.tm.optimum() || session.tm.elapsed() >= session.tm.maximum() ||
+            stopSearch.load(std::memory_order_relaxed) || score_ == VALUE_NONE)
+            break;
+        InfoFull info{};
+        info.depth = i;
+        info.selDepth = session.seldepth;
+        info.hashfull = tt.hashfull();
+        info.nodes = session.nodes;
+        info.nps = session.nodes * 1000 / std::max(session.tm.elapsed(), (timeman::TimePoint)1);
+        info.timeMs = session.tm.elapsed();
+        info.tbHits = session.tbHits;
+        info.multiPV = 1;
+        info.score = score_;
+        TTEntry *entry = tt.lookup(board.hash());
+        if (entry)
+            switch (entry->getFlag()) {
+            case LOWERBOUND:
+                info.bound = "lowerbound";
+                break;
+            case UPPERBOUND:
+                info.bound = "upperbound";
+                break;
+            default:
+                break;
+            }
+        info.pv = extract_pv(board, 2 * i + 4);
+        // Save first move from PV for bestmove output
+        std::string pvStr = info.pv;
+        size_t sp = pvStr.find(' ');
+        std::string firstMove = (sp == std::string::npos) ? pvStr : pvStr.substr(0, sp);
+        if (!firstMove.empty())
+            lastBestMove = chess::Move(chess::uci::uciToMove(board, firstMove).raw());
+        std::stringstream ss;
+        ss << "qnodes " << session.qnodes << " lmrResearches " << session.lmrResearches << " ttHits " << session.ttHits
+           << " ttCutoffs " << session.ttCutoffs << " nullCutoffs " << session.nullCutoffs;
+        info.extrainfo = ss.str();
+        report(info);
+    }
+    if (lastBestMove.is_ok())
+        report(chess::uci::moveToUci(lastBestMove, board.chess960()));
+    else {
+        std::cerr << "info string Warning: Did not search\n";
+        TTEntry *entry = tt.lookup(board.hash());
+        if (entry && entry->getMove() != Move::none().raw())
+            report(chess::uci::moveToUci(Move(entry->getMove()), board.chess960()));
     }
 }
+} // namespace engine::search

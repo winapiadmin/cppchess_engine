@@ -1,76 +1,81 @@
 cmake_minimum_required(VERSION 3.10)
-project(chess_engine)
+project(cppchess_engine)
 
 # Use C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Optional: enable warnings (MSVC specific flags)
-if (MSVC)
-    add_compile_options(/W4 /permissive-)
-else()
-    add_compile_options(-Wall -Wextra -pedantic)
-endif()
-
-# Add the source files
-set(SOURCES
-    main.cpp
-    eval.cpp
-    search.cpp
-    tt.cpp
-    movepick.cpp 
-    uci.cpp
-    ucioptions.cpp
-    timeman.cpp
+include(FetchContent)
+set(BUILD_TESTING OFF)
+FetchContent_Declare(
+    chesslib
+    GIT_REPOSITORY https://github.com/winapiadmin/chesslib.git
+    GIT_TAG main
+)
+FetchContent_Declare(
+    tbprobe
+    GIT_REPOSITORY https://github.com/winapiadmin/tb_probing_tool.git
+    GIT_TAG main
+)
+set(BUILD_GAVIOTA OFF CACHE BOOL "Enable Gaviota TB probing" FORCE)
+option(ENGINE_TUNING "enable Texel tuning (requires csv-parser)" OFF)
+FetchContent_MakeAvailable(chesslib tbprobe)
+set(SOURCES 
+    "main.cpp" 
+    "timeman.cpp" 
+    "eval.cpp" 
+    "tune.cpp"
+    "ucioption.cpp" 
+    "tt.cpp" 
+    "uci.cpp" 
+    "search.cpp" 
+    "score.cpp" 
+    "movepick.cpp" 
+    "tb.cpp"
 )
 
-# Define the executable
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-# Threading support
-find_package(Threads REQUIRED)
-target_link_libraries(${PROJECT_NAME} Threads::Threads)
-
-# Platform-specific threading configurations
-if(WIN32)
-    if(MSVC)
-        # Windows with MSVC - uses Windows threading API
-        target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN)
-    elseif(MINGW)
-        # MinGW on Windows - uses pthread
-        target_compile_definitions(${PROJECT_NAME} PRIVATE _WIN32_WINNT=0x0601)
-        # MinGW might need explicit pthread linking
-        if(CMAKE_THREAD_LIBS_INIT)
-            target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT})
-        endif()
-    endif()
-elseif(UNIX)
-    # Unix/Linux systems - uses pthread
-    if(CMAKE_THREAD_LIBS_INIT)
-        target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT})
-    endif()
-    # Some older systems might need explicit -pthread flag
-    if(CMAKE_USE_PTHREADS_INIT)
-        target_compile_options(${PROJECT_NAME} PRIVATE -pthread)
-        target_link_options(${PROJECT_NAME} PRIVATE -pthread)
-    endif()
+if(ENGINE_TUNING)
+    list(APPEND SOURCES "tune_cmd.cpp")
 endif()
 
-# Optional: Add atomic library support for older compilers
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.9")
-    target_link_libraries(${PROJECT_NAME} atomic)
-endif()
+add_executable(engine ${SOURCES})
 
-# Set default build type if none is specified
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type (Debug, Release, etc.)" FORCE)
+target_link_libraries(engine PRIVATE chesslib syzygy_probe)
+target_include_directories(engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${chesslib_SOURCE_DIR})
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ERROR_QUIET
+    OUTPUT_VARIABLE GIT_SHA
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(GIT_SHA STREQUAL "")
+    set(GIT_SHA "unknown")
 endif()
+execute_process(
+    COMMAND git describe --tags --exact-match
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_TAG
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
-# Optional: Add specific compile flags per build type
-if(NOT MSVC)
-    set(CMAKE_CXX_FLAGS_DEBUG "-g -march=native -mtune=native")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -mtune=native -funroll-loops -ftree-vectorize -fomit-frame-pointer")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR NOT CMAKE_BUILD_TYPE)
+    set(BUILD_VERSION "debug-${GIT_SHA}")
+elseif(GIT_TAG)
+    set(BUILD_VERSION "${GIT_TAG}")
 else()
-    set(CMAKE_CXX_FLAGS_DEBUG "/Zi /Od")
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG")
+    set(BUILD_VERSION "release-${GIT_SHA}")
+endif()
+
+message(STATUS "Build Version: ${BUILD_VERSION}")
+target_compile_definitions(engine PRIVATE BUILD_VERSION="${BUILD_VERSION}")
+if (ENGINE_TUNING)
+    FetchContent_Declare(
+        csv
+        GIT_REPOSITORY https://github.com/vincentlaucsb/csv-parser.git
+        GIT_TAG master
+    )
+    FetchContent_MakeAvailable(csv)
+    target_link_libraries(engine PRIVATE csv)
+    target_compile_definitions(engine PRIVATE USE_CSV_PARSER)
 endif()

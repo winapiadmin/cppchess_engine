@@ -3,10 +3,12 @@
 
 # But not these directories and files
 !*.cpp
-!*.hpp
 !*.h
 !Makefile
 !README.md
 !LICENSE
 !.gitignore
 !CMakeLists.txt
+!.github/
+!.github/**
+!.clang-format

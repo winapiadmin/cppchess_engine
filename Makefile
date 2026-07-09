@@ -1,32 +1,64 @@
-# Compiler and Flags
-CXX = g++
+# :( openbench and fishtest require make
+TARGET = engine
 
-# Source files and object files
-SRC = main.cpp eval.cpp search.cpp tt.cpp movepick.cpp timeman.cpp uci.cpp ucioptions.cpp
-OBJ = $(SRC:.cpp=.o)
+CXX ?= g++
+CXXFLAGS ?= -std=c++17 -Wall -Wextra
+OPTFLAGS ?= -O3
+ifeq ($(LTO), yes)
+    OPTFLAGS += -flto
+    ifeq ($(findstring clang++,$(CXX)),clang++)
+        LDFLAGS += -fuse-ld=lld
+    endif
+endif
+ifeq ($(debug),no)
+    CXXFLAGS += -DNDEBUG
+endif
+ARCH ?= native
 
-# Output file
-EXEC = chess_engine
+ifeq ($(ARCH), native)
+    CXXFLAGS += -march=native -mtune=native
+endif
+ifeq ($(ARCH), avx2)
+    CXXFLAGS += -march=haswell -mavx2 -mbmi -mbmi2 -msse4.1
+endif
+ifeq ($(ARCH), bmi2)
+    CXXFLAGS += -mbmi2
+endif
+ifeq ($(ARCH), sse41)
+    CXXFLAGS += -msse4.1
+endif
+ifeq ($(ARCH), x86-64)
+    CXXFLAGS += -march=x86-64
+endif
+deps:
+	test -d deps/chesslib || git clone https://github.com/winapiadmin/chesslib deps/chesslib
+	test -d deps/tbprobe || git clone https://github.com/winapiadmin/tb_probing_tool deps/tbprobe
+all: deps
+	@$(MAKE) --no-print-directory $(TARGET)
+# Tuning is not required on Makefile, use CMake.
+SRCS := \
+    $(filter-out tune_cmd.cpp,$(wildcard *.cpp)) \
+    $(filter-out %tests.cpp,$(wildcard deps/chesslib/*.cpp)) \
+    deps/tbprobe/syzygy/tbprobe.cpp
+OBJS = $(SRCS:.cpp=.o)
+SHA := $(shell git rev-parse --short HEAD 2>/dev/null)
+TAG := $(shell git describe --tags --exact-match 2>/dev/null)
+ifeq ($(debug),yes)
+    BUILD_VERSION := debug-$(SHA)
+else ifneq ($(TAG),)
+    BUILD_VERSION := $(TAG)
+else
+    BUILD_VERSION := release-$(SHA)
+endif
 
-# Default target: build the project
-all: $(EXEC)
+CXXFLAGS += -DBUILD_VERSION=\"$(BUILD_VERSION)\"
+.PHONY: all clean deps
 
-# Linking the object files into the executable
-$(EXEC): $(OBJ)
-	$(CXX) $(LDFLAGS) -o $(EXEC) $(OBJ)
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $(TARGET) $(OBJS)
 
-# Rule to build object files from source files
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -std=c++17 -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -Ideps/chesslib -Ideps/tbprobe/syzygy -c $< -o $@
 
-# Clean up the compiled files
 clean:
-	rm -f $(OBJ) $(EXEC)
-
-# To run the program after compilation
-run: $(EXEC)
-	./$(EXEC)
-
-# Rebuild the project
-rebuild: clean all
-
+	rm -f $(OBJS) $(TARGET)

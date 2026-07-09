@@ -1,0 +1,16 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 128
+AllowAllArgumentsOnNextLine: false
+AllowAllConstructorInitializersOnNextLine: false
+BinPackParameters: false
+BinPackArguments: false
+BraceWrapping:
+#  AfterInitializerList: true
+  AfterFunction: true
+  BeforeElse: false
+  IndentBraces: false
+AlignArrayOfStructures: Right
+Cpp11BracedListStyle: false
+SpacesInContainerLiterals: false

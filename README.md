@@ -2,4 +2,4 @@
 
 A minimal UCI-compliant chess engine that have time control.
 
-**Library used**: [Disservin/chess-library](https://github.com/Disservin/chess-library)
+**Library used**: [winapiadmin/chesslib](https://github.com/winapiadmin/chesslib)
