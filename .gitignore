@@ -11,3 +11,4 @@
 !CMakeLists.txt
 !.github/
 !.github/**
+!.clang-format

@@ -11,9 +11,35 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/winapiadmin/chesslib.git
     GIT_TAG main
 )
-FetchContent_MakeAvailable(chesslib)
-add_executable(engine "main.cpp" "timeman.cpp" "timeman.h" "eval.h" "eval.cpp" "tune.h" "ucioption.h" "tune.cpp" "ucioption.cpp" "tt.h" "tt.cpp" "uci.cpp" "uci.h" "search.h" "search.cpp" "score.h" "score.cpp" "movepick.h" "movepick.cpp")
-target_link_libraries(engine PRIVATE chesslib)
+FetchContent_Declare(
+    tbprobe
+    GIT_REPOSITORY https://github.com/winapiadmin/tb_probing_tool.git
+    GIT_TAG main
+)
+set(BUILD_GAVIOTA OFF CACHE BOOL "Enable Gaviota TB probing" FORCE)
+option(ENGINE_TUNING "enable Texel tuning (requires csv-parser)" OFF)
+FetchContent_MakeAvailable(chesslib tbprobe)
+set(SOURCES 
+    "main.cpp" 
+    "timeman.cpp" 
+    "eval.cpp" 
+    "tune.cpp"
+    "ucioption.cpp" 
+    "tt.cpp" 
+    "uci.cpp" 
+    "search.cpp" 
+    "score.cpp" 
+    "movepick.cpp" 
+    "tb.cpp"
+)
+
+if(ENGINE_TUNING)
+    list(APPEND SOURCES "tune_cmd.cpp")
+endif()
+
+add_executable(engine ${SOURCES})
+
+target_link_libraries(engine PRIVATE chesslib syzygy_probe)
 target_include_directories(engine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${chesslib_SOURCE_DIR})
 execute_process(
     COMMAND git rev-parse --short HEAD
@@ -39,5 +65,14 @@ else()
 endif()
 
 message(STATUS "Build Version: ${BUILD_VERSION}")
-add_definitions(-DBUILD_VERSION="${BUILD_VERSION}")
-
+target_compile_definitions(engine PRIVATE BUILD_VERSION="${BUILD_VERSION}")
+if (ENGINE_TUNING)
+    FetchContent_Declare(
+        csv
+        GIT_REPOSITORY https://github.com/vincentlaucsb/csv-parser.git
+        GIT_TAG master
+    )
+    FetchContent_MakeAvailable(csv)
+    target_link_libraries(engine PRIVATE csv)
+    target_compile_definitions(engine PRIVATE USE_CSV_PARSER)
+endif()

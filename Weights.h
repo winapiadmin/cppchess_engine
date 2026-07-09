@@ -1,0 +1,139 @@
+#ifndef WEIGHTS_H
+#define WEIGHTS_H
+#include "eval.h"
+namespace engine::eval {
+inline Value tempo = 20;
+inline Value PawnValue = 100;
+inline Value KnightValue = 320;
+inline Value BishopValue = 330;
+inline Value RookValue = 500;
+inline Value QueenValue = 900;
+inline Value fianchettoBonus = 20;
+inline Value trappedBishopPenalty = 60;
+inline Value centerWeight = 5;
+inline Value mopUpKingDistWeight = 5;
+inline Value mopUpEdgeDistWeight = 10;
+inline Value spaceWeight = 2;
+inline Value bishopPairMg = 25;
+inline Value bishopPairEg = 50;
+inline Value rookOpenFileMg = 25;
+inline Value rookOpenFileEg = 20;
+inline Value rookSemiOpenFileMg = 15;
+inline Value rookSemiOpenFileEg = 12;
+inline Value doubledPawnMg = 10;
+inline Value doubledPawnEg = 20;
+inline Value isolatedPawnMg = 15;
+inline Value isolatedPawnEg = 25;
+inline Value kingShelterBaseMg = 20;
+inline Value kingShelterBaseEg = 5;
+inline Value kingShelterDecayMg = 4;
+inline Value kingShelterDecayEg = 1;
+inline Value kqkDistWeight = 15;
+inline Value kqkEdgeWeight = 15;
+inline Value krkDistWeight = 5;
+inline Value krkEdgeWeight = 10;
+inline Value kpkWeight = 15;
+inline Value mgMobilityCnt[7][8] = {
+    {   0,   0,  0, 0,  0,  0,  0,  0 },
+    {   0,   0,  0, 0,  0,  0,  0,  0 },
+    { -15,  -8, -2, 4, 10, 16, 22, 28 },
+    { -20, -12, -4, 5, 14, 23, 32, 40 },
+    { -25, -15, -5, 5, 15, 25, 35, 45 },
+    { -30, -18, -6, 6, 18, 30, 42, 55 },
+    { -10,  -5,  0, 5, 10, 15, 20, 25 }
+};
+inline Value egMobilityCnt[7][8] = {
+    {   0,   0,  0, 0,  0,  0,  0,  0 },
+    {   0,   0,  0, 0,  0,  0,  0,  0 },
+    { -20, -12, -4, 5, 14, 23, 32, 40 },
+    { -25, -15, -5, 5, 16, 27, 38, 50 },
+    { -30, -18, -6, 6, 18, 30, 42, 55 },
+    { -35, -22, -8, 8, 22, 35, 48, 60 },
+    { -15,  -8, -2, 4, 10, 16, 22, 28 }
+};
+inline Value kingTropismMg[7] = { 0, 0, 3, 2, 2, 5, 0 };
+inline Value kingTropismEg[7] = { 0, 0, 2, 2, 3, 4, 0 };
+inline Value passedBonusMg[7] = { 0, 5, 15, 40, 80, 140, 200 };
+inline Value passedBonusEg[7] = { 0, 10, 30, 70, 140, 230, 350 };
+inline Value mg_knight_table[64] = { -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0,   5,   5,   0,   -20, -40,
+                                     -30, 5,   10,  15,  15,  10,  5,   -30, -30, 0,   15,  20,  20,  15,  0,   -30,
+                                     -30, 5,   15,  20,  20,  15,  5,   -30, -30, 0,   10,  15,  15,  10,  0,   -30,
+                                     -40, -20, 0,   0,   0,   0,   -20, -40, -50, -40, -30, -30, -30, -30, -40, -50 };
+inline Value mg_bishop_table[64] = { -20, -10, -10, -10, -10, -10, -10, -20, -10, 0,   0,   0,   0,   0,   0,   -10,
+                                     -10, 0,   10,  10,  10,  10,  0,   -10, -10, 0,   5,   10,  10,  5,   0,   -10,
+                                     -10, 5,   5,   10,  10,  5,   5,   -10, -10, 0,   10,  10,  10,  10,  0,   -10,
+                                     -10, 0,   0,   0,   0,   0,   0,   -10, -20, -10, -10, -10, -10, -10, -10, -20 };
+inline Value mg_rook_table[64] = { 0, 0, 0, 0, 0,  0,  0,  0,  0,  5,  5,  5,  5, 5, 5, 0, 0, 5, 5, 5, 5, 5,
+                                   5, 0, 0, 5, 5,  5,  5,  5,  5,  0,  0,  5,  5, 5, 5, 5, 5, 0, 0, 5, 5, 5,
+                                   5, 5, 5, 0, 10, 15, 15, 15, 15, 15, 15, 10, 0, 0, 0, 0, 0, 0, 0, 0 };
+inline Value mg_king_table[64] = { -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30,
+                                   -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30,
+                                   -20, -30, -30, -40, -40, -30, -30, -20, -10, -20, -20, -20, -20, -20, -20, -10,
+                                   20,  20,  0,   0,   0,   0,   20,  20,  20,  30,  10,  0,   0,   10,  30,  20 };
+inline Value mg_queen_table[64] = { -20, -10, -10, -5, -5, -10, -10, -20, -10, 0,   5,   0,  0,  0,   0,   -10,
+                                    -10, 5,   5,   5,  5,  5,   0,   -10, 0,   0,   5,   5,  5,  5,   0,   -5,
+                                    -5,  0,   5,   5,  5,  5,   0,   -5,  -10, 0,   5,   5,  5,  5,   0,   -10,
+                                    -10, 0,   0,   0,  0,  0,   0,   -10, -20, -10, -10, -5, -5, -10, -10, -20 };
+inline Value eg_knight_table[64] = { -50, -40, -20, -20, -20, -20, -40, -50, -40, -10, 5,   10,  10,  5,   -10, -40,
+                                     -30, 10,  20,  25,  25,  20,  10,  -30, -30, 15,  25,  30,  30,  25,  15,  -30,
+                                     -30, 15,  25,  30,  30,  25,  15,  -30, -30, 10,  20,  25,  25,  20,  10,  -30,
+                                     -40, -10, 5,   10,  10,  5,   -10, -40, -50, -40, -20, -20, -20, -20, -40, -50 };
+inline Value eg_bishop_table[64] = { -10, -5, -5, -5, -5, -5, -5, -10, -5, 5,  10, 10, 10,  10, 5,  -5, -5, 10, 15, 20, 20, 15,
+                                     10,  -5, -5, 10, 20, 25, 25, 20,  10, -5, -5, 10, 20,  25, 25, 20, 10, -5, -5, 10, 15, 20,
+                                     20,  15, 10, -5, -5, 5,  10, 10,  10, 10, 5,  -5, -10, -5, -5, -5, -5, -5, -5, -10 };
+inline Value eg_rook_table[64] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  5,  10, 15, 15, 10, 5,  0,  0,  5,  10, 15, 15, 10,
+                                   5,  0,  0,  5,  10, 15, 15, 10, 5,  0,  10, 15, 20, 25, 25, 20, 15, 10, 10, 15, 20, 25,
+                                   25, 20, 15, 10, 20, 25, 30, 35, 35, 30, 25, 20, 0,  0,  0,  5,  5,  0,  0,  0 };
+inline Value eg_king_table[64] = { -50, -40, -30, -20, -20, -30, -40, -50, -40, -20, 0,   10,  10,  0,   -20, -40,
+                                   -30, 0,   20,  30,  30,  20,  0,   -30, -20, 10,  30,  40,  40,  30,  10,  -20,
+                                   -20, 10,  30,  40,  40,  30,  10,  -20, -30, 0,   20,  30,  30,  20,  0,   -30,
+                                   -40, -20, 0,   10,  10,  0,   -20, -40, -50, -40, -30, -20, -20, -30, -40, -50 };
+inline Value eg_queen_table[64] = { -10, -5, -5, 0,  0,  -5, -5, -10, -5, 0,  5,  5,  5,   5,  0,  -5, -5, 5,  10, 15, 15, 10,
+                                    5,   -5, -5, 10, 15, 20, 20, 15,  10, -5, -5, 10, 15,  20, 20, 15, 10, -5, -5, 5,  10, 15,
+                                    15,  10, 5,  -5, -5, 0,  5,  5,   5,  5,  0,  -5, -10, -5, -5, 0,  0,  -5, -5, -10 };
+inline Value mg_pawn_table[56] = { 0,   0,   0,   0,   0,  0,   0,  0,  0,   0,   0,   0,   0,   0,   0,   0,  -5,  -2, 2,
+                                   5,   5,   2,   -2,  -5, -10, -5, 10, 20,  20,  10,  -5,  -10, -20, -10, 25, 40,  40, 25,
+                                   -10, -20, -35, -20, 50, 80,  80, 50, -20, -35, -55, -40, 90,  130, 130, 90, -40, -55 };
+inline Value eg_pawn_table[56] = { 0,   0,   0,   0,   0,  0,   0,   0,  0,   0,   0,   0,   0,   0,   0,   0,   -5,  -2, 2,
+                                   5,   5,   2,   -2,  -5, -10, -5,  10, 20,  20,  10,  -5,  -10, -20, -10, 30,  55,  55, 30,
+                                   -10, -20, -35, -20, 70, 110, 110, 70, -20, -35, -60, -45, 120, 180, 180, 120, -45, -60 };
+inline Value developedMg = 8;
+inline Value developedEg = 4;
+inline Value outpostBonusKnight[2] = { 15, 30 };
+inline Value outpostBonusBishop[2] = { 10, 25 };
+inline Value kingProtector[6][2] = {
+    {  0,  0 },
+    {  8, 12 },
+    {  5, 10 },
+    { 10, 15 },
+    {  3,  5 },
+    {  0,  0 }
+};
+inline Value threatByMinor[7][2] = {
+    {  0,  0 },
+    {  0,  0 },
+    { 15, 25 },
+    { 15, 25 },
+    { 25, 35 },
+    { 35, 50 }
+};
+inline Value threatByRook[7][2] = {
+    {  0,  0 },
+    {  0,  0 },
+    { 10, 15 },
+    { 10, 15 },
+    { 20, 25 },
+    { 25, 35 }
+};
+inline Value hangingScore = 70;
+inline Value overloadScore = 25;
+inline Value threatByRankScore = 10;
+inline Value minorImWt = 30;
+inline Value bishopImWt = 15;
+inline Value rookImWt = 20;
+inline Value queenImWt = 50;
+inline Value rammedPawnPenalty = 10;
+inline Value rookOnSeventhBonus = 30;
+inline Value earlyQueenPenalty = 5;
+} // namespace engine::eval
+#endif
