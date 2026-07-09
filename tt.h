@@ -1,8 +1,8 @@
 #pragma once
 #include <algorithm>
-#include <cstring>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <new>
 #include <types.h>
 namespace engine {
@@ -92,11 +92,11 @@ class TranspositionTable {
   public:
     size_t size; // total number of TTEntry elements (must be even)
     TranspositionTable() : table(nullptr), buckets(0), time(0), size(0) {}
-    TranspositionTable(const TranspositionTable&) = delete;
-    TranspositionTable& operator=(const TranspositionTable&) = delete;
+    TranspositionTable(const TranspositionTable &) = delete;
+    TranspositionTable &operator=(const TranspositionTable &) = delete;
 
-    TranspositionTable(TranspositionTable&&) = delete;
-    TranspositionTable& operator=(TranspositionTable&&) = delete;
+    TranspositionTable(TranspositionTable &&) = delete;
+    TranspositionTable &operator=(TranspositionTable &&) = delete;
 
     TranspositionTable(size_t sizeInMB) : time(0) {
         size = sizeInMB * 1048576LL / sizeof(TTEntry);

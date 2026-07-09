@@ -1,8 +1,8 @@
 #pragma once
-#include <types.h>
 #include <chrono>
-#include <vector>
 #include <string>
+#include <types.h>
+#include <vector>
 namespace engine::timeman {
 using TimePoint = std::chrono::milliseconds::rep;
 constexpr TimePoint INFINITE_TIME = 864000000;

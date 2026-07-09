@@ -68,7 +68,7 @@ void OptionsMap::add(const std::string &name, const Option &option) {
         options_map[name] = option;
 
         options_map[name].parent = this;
-        options_map[name].idx = options_map.size()-1;
+        options_map[name].idx = options_map.size() - 1;
     } else {
         std::cerr << "Option \"" << name << "\" was already added!" << std::endl;
         std::exit(EXIT_FAILURE);
