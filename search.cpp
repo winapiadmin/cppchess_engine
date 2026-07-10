@@ -453,7 +453,8 @@ Value doSearch(
 
         board.undoMove();
         movesSearched++;
-        if (!isCapture && !givesCheck) quietsSearched.push_back(move);
+        if (!isCapture && !givesCheck)
+            quietsSearched.push_back(move);
         if (score > maxScore) {
             maxScore = score;
             bestMove = move;
@@ -471,7 +472,7 @@ Value doSearch(
             }
         } else if (!isCapture && depth > 0) {
             int malus = 300 * depth - 250;
-            for (Move move_:quietsSearched)
+            for (Move move_ : quietsSearched)
                 session.historyHeuristic[(int)move_.from()][(int)move_.to()] =
                     std::clamp(session.historyHeuristic[(int)move_.from()][(int)move_.to()] - malus, -16384, 16384);
         }
