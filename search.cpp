@@ -472,8 +472,9 @@ Value doSearch(
                     std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + bonus, -16384, 16384);
                 int malus = 300 * depth - 250;
                 for (Move move_ : quietsSearched)
-                    session.historyHeuristic[(int)move_.from()][(int)move_.to()] =
-                        std::clamp(session.historyHeuristic[(int)move_.from()][(int)move_.to()] - malus, -16384, 16384);
+                    if (m != move)
+                        session.historyHeuristic[(int)move_.from()][(int)move_.to()] =
+                            std::clamp(session.historyHeuristic[(int)move_.from()][(int)move_.to()] - malus, -16384, 16384);
                 if (session.killerMoves[ply][0] != move) {
                     session.killerMoves[ply][1] = session.killerMoves[ply][0];
                     session.killerMoves[ply][0] = move;
