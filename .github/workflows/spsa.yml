@@ -32,7 +32,7 @@ jobs:
           tar -xf fastchess-linux-x86-64.tar
           chmod +x fastchess-linux-x86-64/fastchess
           mv fastchess-linux-x86-64/fastchess fastchess
-          wget https://gist.github.com/winapiadmin/912620aff9e09189e677f0db404c89ac/raw/4b7be06b8b0a9c02dfa6348b07529eb5af148f98/spsa.py
+          wget https://gist.github.com/winapiadmin/912620aff9e09189e677f0db404c89ac/raw/6289f372b17c07910403dcd15831f1effe971171/spsa.py
       - name: Build engine
         run: |
           mkdir build
