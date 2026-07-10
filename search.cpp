@@ -372,7 +372,7 @@ Value doSearch(
 
         // Futility pruning at shallow depths
         if (!inCheck && !isCapture && !givesCheck && depth <= 2 && ply > 0 && movesSearched > 0) {
-            Value margin = Value(128 + 128 * depth);
+            Value margin = Value(200 + 128 * depth);
             if (staticEval + margin <= alpha && std::abs(alpha) < VALUE_TB_WIN_IN_MAX_PLY)
                 continue;
         }
@@ -385,7 +385,7 @@ Value doSearch(
         // SEE pruning for losing captures at shallow depths
         if (!inCheck && isCapture && !givesCheck && depth <= 2 && movesSearched > 0 && move.type_of() != PROMOTION &&
             std::abs(alpha) < VALUE_TB_WIN_IN_MAX_PLY) {
-            if (movepick::see(board, move) < 0)
+            if (movepick::see(board, move) < -20)
                 continue;
         }
 
@@ -408,7 +408,7 @@ Value doSearch(
                 else if (staticEval - 50 >= alphaOrig)
                     reduction--;
             } else if (movesSearched >= 6) {
-                reduction = 1 + movesSearched / 8;
+                reduction = 1 + movesSearched / 6;
             }
             if (reduction > 0)
                 reduction = std::clamp(reduction, 1, depth - 2);
@@ -419,7 +419,7 @@ Value doSearch(
             ext = 1;
         if (ext == 0 && moves.size() == 1)
             ext = 1;
-        if (ext == 0 && isCapture && movesSearched == 0)
+        if (ext == 0 && isCapture)
             ext = 1;
         board.doMove(move);
 
