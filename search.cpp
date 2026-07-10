@@ -358,7 +358,7 @@ Value doSearch(
     Value maxScore = -VALUE_INFINITE;
     Move bestMove = Move::none();
     int movesSearched = 0;
-
+    Movelist quietsSearched;
     for (size_t i = 0; i < moves.size(); ++i) {
         Move move = moves[i];
         if (ply == 0 && !session.tc.searchmoves.empty() &&
@@ -453,7 +453,7 @@ Value doSearch(
 
         board.undoMove();
         movesSearched++;
-
+        if (!isCapture && !givesCheck) quietsSearched.push_back(move);
         if (score > maxScore) {
             maxScore = score;
             bestMove = move;
@@ -469,11 +469,12 @@ Value doSearch(
                 session.historyHeuristic[(int)move.from()][(int)move.to()] =
                     std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + bonus, -16384, 16384);
             }
-        } /*else if (!isCapture && depth > 0) {
-            int malus = -depth * depth;
-            session.historyHeuristic[(int)move.from()][(int)move.to()] =
-                std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + malus, -16384, 16384);
-        }*/
+        } else if (!isCapture && depth > 0) {
+            int malus = 300 * depth - 250;
+            for (Move move_:quietsSearched)
+                session.historyHeuristic[(int)move_.from()][(int)move_.to()] =
+                    std::clamp(session.historyHeuristic[(int)move_.from()][(int)move_.to()] - malus, -16384, 16384);
+        }
 
         if (alpha >= beta) {
             if (!isCapture) {
