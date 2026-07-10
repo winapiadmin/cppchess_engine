@@ -1,6 +1,5 @@
 # :( openbench and fishtest require make
-TARGET = engine
-
+EXE = engine
 CXX ?= g++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra
 OPTFLAGS ?= -O3
@@ -34,7 +33,7 @@ deps:
 	test -d deps/chesslib || git clone https://github.com/winapiadmin/chesslib deps/chesslib
 	test -d deps/tbprobe || git clone https://github.com/winapiadmin/tb_probing_tool deps/tbprobe
 all: deps
-	@$(MAKE) --no-print-directory $(TARGET)
+	@$(MAKE) --no-print-directory $(EXE)
 # Tuning is not required on Makefile, use CMake.
 SRCS := \
     $(filter-out tune_cmd.cpp,$(wildcard *.cpp)) \
@@ -54,11 +53,11 @@ endif
 CXXFLAGS += -DBUILD_VERSION=\"$(BUILD_VERSION)\"
 .PHONY: all clean deps
 
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $(TARGET) $(OBJS)
+$(EXE): $(OBJS)
+	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -o $(EXE) $(OBJS)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(OPTFLAGS) -Ideps/chesslib -Ideps/tbprobe/syzygy -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(EXE)
