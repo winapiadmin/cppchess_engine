@@ -297,12 +297,13 @@ void execCmd(const std::string &line) {
                 "8/8/8/8/8/6k1/6p1/6K1 w - -",
                 "7k/7P/6K1/8/3B4/8/8/8 b - -",
             };
-            timeman::LimitsType tc{};tc.depth=10;
+            timeman::LimitsType tc{};
+            tc.depth = 10;
             auto start = std::chrono::high_resolution_clock::now();
-            for (auto& fen: Defaults){
-                std::cerr<<fen<<'\n';
+            for (auto &fen : Defaults) {
+                std::cerr << fen << '\n';
                 chess::Position pos(fen);
-                nodes+=search::search(pos, tc);
+                nodes += search::search(pos, tc);
             }
             auto end = std::chrono::high_resolution_clock::now();
             auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
