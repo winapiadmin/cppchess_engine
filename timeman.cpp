@@ -22,12 +22,12 @@ void TimeManagement::init(LimitsType &limits, chess::Color us, int ply, double &
 
     // If we have no time, we don't need to fully initialize TM.
     // startTime is used by movetime and useNodesTime is used in elapsed calls.
-    startTime = limits.startTime;
+    startTime = now();
     if (limits.movetime != 0) {
         optimumTime = maximumTime = TimePoint(limits.movetime);
         return;
     }
-    if (limits.time[us] == 0 && limits.movetime == 0) {
+    if (!limits.use_time_management()) {
         optimumTime = maximumTime = INFINITE_TIME;
         return;
     }

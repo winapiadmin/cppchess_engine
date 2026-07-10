@@ -15,7 +15,7 @@ struct LimitsType {
 
     // Init explicitly due to broken value-initialization of non POD in MSVC
     LimitsType() {
-        time[chess::WHITE] = time[chess::BLACK] = inc[chess::WHITE] = inc[chess::BLACK] = movetime = startTime = TimePoint(0);
+        time[chess::WHITE] = time[chess::BLACK] = inc[chess::WHITE] = inc[chess::BLACK] = movetime = TimePoint(0);
         movestogo = mate = perft = infinite = 0;
         depth = 64;
         nodes = 0;
@@ -25,7 +25,7 @@ struct LimitsType {
     bool use_time_management() const { return time[chess::WHITE] || time[chess::BLACK]; }
 
     std::vector<std::string> searchmoves;
-    TimePoint time[chess::COLOR_NB], inc[chess::COLOR_NB], movetime, startTime;
+    TimePoint time[chess::COLOR_NB], inc[chess::COLOR_NB], movetime;
     int movestogo, depth, mate, perft, infinite;
     uint64_t nodes;
     bool ponderMode;
