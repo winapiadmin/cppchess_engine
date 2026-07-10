@@ -68,7 +68,7 @@ else()
 endif()
 
 message(STATUS "Build Version: ${BUILD_VERSION}")
-target_compile_definitions(engine PRIVATE BUILD_VERSION="${BUILD_VERSION}")
+target_compile_definitions(engine PRIVATE BUILD_VERSION="${BUILD_VERSION}" OPENBENCH_SUPPORT)
 if (ENGINE_TUNING)
     FetchContent_Declare(
         csv
