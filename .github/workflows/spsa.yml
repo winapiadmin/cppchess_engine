@@ -42,8 +42,12 @@ jobs:
       - name: Tune engine
         run: |
           python spsa.py --iters 300 --pairs 30 --engine build/engine
-      - name: Upload unzipped artifact
-        uses: actions/upload-artifact@v7
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          path: ./Weights.h
-          archive: false
+          name: spsa-results
+          path: |
+            ./Weights.h
+            *.pgn
+            *.epd
+          compression-level: 0
