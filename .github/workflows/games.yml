@@ -6,7 +6,7 @@ on:
       base_ref:
         description: "Base branch, tag, or commit"
         required: false
-        default: "test_chesslib"
+        default: "HandcraftedEngine"
       rounds:
         description: "Max rounds for SPRT"
         required: false
@@ -14,15 +14,15 @@ on:
       tc:
         description: "Time control (e.g. 60+0.6 or 10+0.1)"
         required: false
-        default: "60+0.6"
+        default: "10+0.1"
       elo0:
         description: "elo0"
         required: false
-        default: "0.5"
+        default: "0.0"
       elo1:
         description: "elo1"
         required: false
-        default: "2.5"
+        default: "2.0"
       output_exec:
         description: "Executable output file name"
         required: false
