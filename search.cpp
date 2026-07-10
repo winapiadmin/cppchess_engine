@@ -358,7 +358,7 @@ Value doSearch(
     Value maxScore = -VALUE_INFINITE;
     Move bestMove = Move::none();
     int movesSearched = 0;
-
+    Movelist quietsSearched;
     for (size_t i = 0; i < moves.size(); ++i) {
         Move move = moves[i];
         if (ply == 0 && !session.tc.searchmoves.empty() &&
@@ -419,7 +419,7 @@ Value doSearch(
             ext = 1;
         if (ext == 0 && moves.size() == 1)
             ext = 1;
-        if (ext == 0 && isCapture && movesSearched == 0)
+        if (ext == 0 && isCapture)
             ext = 1;
         board.doMove(move);
 
@@ -453,30 +453,28 @@ Value doSearch(
 
         board.undoMove();
         movesSearched++;
-
+        if (!isCapture && !givesCheck)
+            quietsSearched.push_back(move);
         if (score > maxScore) {
             maxScore = score;
             bestMove = move;
         }
 
-        if (score > alpha) {
+        if (score > alpha)
             alpha = score;
 
+        if (alpha >= beta) {
             if (!isCapture) {
                 int bonus = depth * depth;
                 if (is_win(score))
                     bonus += 4 * depth * depth;
                 session.historyHeuristic[(int)move.from()][(int)move.to()] =
                     std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + bonus, -16384, 16384);
-            }
-        } /*else if (!isCapture && depth > 0) {
-            int malus = -depth * depth;
-            session.historyHeuristic[(int)move.from()][(int)move.to()] =
-                std::clamp(session.historyHeuristic[(int)move.from()][(int)move.to()] + malus, -16384, 16384);
-        }*/
-
-        if (alpha >= beta) {
-            if (!isCapture) {
+                int malus = 300 * depth - 250;
+                for (Move move_ : quietsSearched)
+                    if (move_ != move)
+                        session.historyHeuristic[(int)move_.from()][(int)move_.to()] =
+                            std::clamp(session.historyHeuristic[(int)move_.from()][(int)move_.to()] - malus, -16384, 16384);
                 if (session.killerMoves[ply][0] != move) {
                     session.killerMoves[ply][1] = session.killerMoves[ply][0];
                     session.killerMoves[ply][0] = move;
@@ -528,7 +526,7 @@ std::string extract_pv(const chess::Position &root, int maxPly) {
     return pv;
 }
 
-void search(const chess::Position &board, const timeman::LimitsType timecontrol) {
+uint64_t search(const chess::Position &board, const timeman::LimitsType timecontrol) {
     stopSearch = false;
     tt.newSearch();
     static double originalTimeAdjust = -1;
@@ -655,5 +653,6 @@ void search(const chess::Position &board, const timeman::LimitsType timecontrol)
         if (entry && entry->getMove() != Move::none().raw())
             report(chess::uci::moveToUci(Move(entry->getMove()), board.chess960()));
     }
+    return session.nodes;
 }
 } // namespace engine::search

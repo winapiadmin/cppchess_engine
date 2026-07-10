@@ -2,6 +2,7 @@
 #include "eval.h"
 #include "timeman.h"
 #include "tt.h"
+#include <cstdint>
 #include <position.h>
 namespace engine::search {
 struct Session {
@@ -18,7 +19,7 @@ struct Session {
     chess::Color ogcolor;
 };
 void stop();
-void search(const chess::Position &, const timeman::LimitsType);
+uint64_t search(const chess::Position &, const timeman::LimitsType);
 bool isStopped();
 extern engine::TranspositionTable tt;
 } // namespace engine::search
