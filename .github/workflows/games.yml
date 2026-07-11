@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           path: new
           persist-credentials: false
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.inputs.base_ref }}
           path: base
@@ -86,60 +86,98 @@ jobs:
         with:
           name: base-engine
           path: base/build/${{ github.event.inputs.output_exec }}
-
-
-  test:
+  prepare-tools:
     runs-on: ubuntu-latest
-    needs: [build-new, build-base]
 
     steps:
-      - name: Download engines
-        uses: actions/download-artifact@v4
+      - run: |
+          mkdir tools
+          cd tools
 
-      - name: Install tools
-        env:
-          OUTPUT_EXEC: ${{ github.event.inputs.output_exec }}
-        run: |
           sudo apt update
           sudo apt install -y wget unzip
-
           wget https://github.com/Disservin/fastchess/releases/download/v1.8.0-alpha/fastchess-linux-x86-64.tar
           tar -xf fastchess-linux-x86-64.tar
           chmod +x fastchess-linux-x86-64/fastchess
           mv fastchess-linux-x86-64/fastchess fastchess
-
           wget https://github.com/official-stockfish/books/raw/refs/heads/master/UHO_Lichess_4852_v1.epd.zip
           unzip UHO_Lichess_4852_v1.epd.zip
-
           wget https://github.com/michiguel/Ordo/releases/download/1.0/ordo-linux64
           chmod +x ordo-linux64
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tools
+          path: tools/
+  test:
+    needs: [build-new, build-base, prepare-tools]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Play games
+        env:
+          OUTPUT_EXEC: ${{ github.event.inputs.output_exec }}
+          TC: ${{ github.event.inputs.tc }}
+        run: |
           chmod +x new-engine/engine
           chmod +x base-engine/$OUTPUT_EXEC
+          tools/fastchess \
+            -engine cmd=new-engine/engine name=new \
+            -engine cmd=base-engine/$OUTPUT_EXEC name=base \
+            -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
+            -each tc=$TC \
+            -rounds 1500 \
+            -concurrency $(nproc) \
+            -randomseed ${{ matrix.shard }} \
+            -pgnout notation=san nodes=true \
+                    file=games_${{ matrix.shard }}.pgn \
+            | tee results_${{ matrix.shard }}.txt
 
-      - name: Run fastchess
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: |
+            games_${{ matrix.shard }}.pgn
+            results_${{ matrix.shard }}.txt
+
+  evaluate:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+
+
+      - name: Run Ordo
+        run: |
+          ./ordo-linux64 -o ratings.txt -- shard-*/games_*.pgn
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: SPRT
         env:
           ELO0: ${{ github.event.inputs.elo0 }}
           ELO1: ${{ github.event.inputs.elo1 }}
-          TC: ${{ github.event.inputs.tc }}
-          OUTPUT_EXEC: ${{ github.event.inputs.output_exec }}
-          ROUNDS: ${{ github.event.inputs.rounds }}
         run: |
-          ./fastchess -recover \
-             -engine cmd=new-engine/engine name=new \
-             -engine cmd=base-engine/$OUTPUT_EXEC name=base \
-             -openings file=UHO_Lichess_4852_v1.epd format=epd order=random \
-             -each tc=$TC \
-             -rounds $ROUNDS \
-             -concurrency $(nproc) \
-             -pgnout notation=san nodes=true file=games.pgn \
-             -sprt elo0=$ELO0 elo1=$ELO1 alpha=0.05 beta=0.05 | tee results.txt
-          ./ordo-linux64 -o ratings.txt -- games.pgn
-      - name: Upload results
-        uses: actions/upload-artifact@v4
+          pip install chess scipy
+          git clone https://github.com/jdart1/stats.git
+          python stats/sprt.py \
+            --elo0 "$ELO0" \
+            --elo1 "$ELO1" --alpha 0.05 --beta 0.05 --results $(
+          python extract_ptnml.py shard-*/*.pgn | tee results.txt | tail -n 1)> sprt.txt
+      - uses: actions/upload-artifact@v4
         with:
           name: results
           path: |
-            games.pgn
+            shard-*/games_*.pgn
             ratings.txt
+            sprt.txt
             results.txt

@@ -108,14 +108,14 @@ FASTCHESS_TEMPLATE = {
             "options": [],
             "limit": {
                 "tc": {
-                    "increment": 0,
+                    "increment": 100,
                     "fixed_time": 0,
-                    "time": 0,
+                    "time": 10000,
                     "moves": 0,
                     "timemargin": 0
                 },
                 "nodes": 0,
-                "plies": 5
+                "plies": 0
             },
             "variant": 0
         },
@@ -128,14 +128,14 @@ FASTCHESS_TEMPLATE = {
             "options": [],
             "limit": {
                 "tc": {
-                    "increment": 0,
+                    "increment": 100,
                     "fixed_time": 0,
-                    "time": 0,
+                    "time": 10000,
                     "moves": 0,
                     "timemargin": 0
                 },
                 "nodes": 0,
-                "plies": 5
+                "plies": 0
             },
             "variant": 0
         }
