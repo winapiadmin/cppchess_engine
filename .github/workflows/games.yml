@@ -125,7 +125,7 @@ jobs:
         run: |
           chmod +x new-engine/engine
           chmod +x base-engine/$OUTPUT_EXEC
-          chmod +x tools/fastchess-linux-x86-64/fastchess
+          chmod +x tools/fastchess
           chmod +x tools/ordo-linux64
           tools/fastchess \
             -engine cmd=new-engine/engine name=new \
