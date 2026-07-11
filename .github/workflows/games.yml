@@ -134,7 +134,6 @@ jobs:
             -each tc=$TC \
             -rounds 1500 \
             -concurrency $(nproc) \
-            -randomseed ${{ matrix.shard }} \
             -pgnout notation=san nodes=true \
                     file=games_${{ matrix.shard }}.pgn \
             | tee results_${{ matrix.shard }}.txt
