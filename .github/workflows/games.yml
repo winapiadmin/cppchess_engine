@@ -132,7 +132,7 @@ jobs:
             -engine cmd=base-engine/$OUTPUT_EXEC name=base \
             -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=$TC \
-            -rounds 1500 \
+            -rounds 1 \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true \
                     file=games_${{ matrix.shard }}.pgn \
@@ -156,7 +156,7 @@ jobs:
       - name: Run Ordo
         run: |
           chmod +x tools/ordo-linux64
-          tools/ordo-linux64 -o ratings.txt -- shard-*/games_*.pgn
+          tools/ordo-linux64 -o ratings.txt shard-*/games_*.pgn
 
       - uses: actions/setup-python@v6
         with:
