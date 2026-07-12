@@ -132,7 +132,7 @@ jobs:
             -engine cmd=base-engine/$OUTPUT_EXEC name=base \
             -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=$TC -startup-ms 60000 \
-            -rounds 1500 \
+            -rounds 1500 -repeat \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true \
                     file=games_${{ matrix.shard }}.pgn \
