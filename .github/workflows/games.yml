@@ -128,10 +128,10 @@ jobs:
           chmod +x tools/fastchess
           chmod +x tools/ordo-linux64
           tools/fastchess \
-            -engine cmd=new-engine/engine name=new timeout=100000 \
-            -engine cmd=base-engine/$OUTPUT_EXEC name=base timeout=100000 \
+            -engine cmd=new-engine/engine name=new \
+            -engine cmd=base-engine/$OUTPUT_EXEC name=base \
             -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
-            -each tc=$TC \
+            -each tc=$TC -startup-ms 60000 \
             -rounds 1500 \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true \
