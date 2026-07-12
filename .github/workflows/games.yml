@@ -127,16 +127,30 @@ jobs:
           chmod +x base-engine/$OUTPUT_EXEC
           chmod +x tools/fastchess
           chmod +x tools/ordo-linux64
-          tools/fastchess \
-            -engine cmd=new-engine/engine name=new \
-            -engine cmd=base-engine/$OUTPUT_EXEC name=base \
-            -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
-            -each tc=$TC \
-            -rounds 1500 \
-            -concurrency $(nproc) \
-            -pgnout notation=san nodes=true \
-                    file=games_${{ matrix.shard }}.pgn \
-            | tee results_${{ matrix.shard }}.txt
+          max_retries=3
+          for attempt in $(seq 1 $max_retries); do
+            echo "Fastchess attempt $attempt/$max_retries"
+            if tools/fastchess \
+              -recover -repeat \
+              -engine cmd=new-engine/engine name=new \
+              -engine cmd=base-engine/$OUTPUT_EXEC name=base \
+              -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
+              -each tc=$TC \
+              -rounds 1500 \
+              -concurrency $(nproc) \
+              -pgnout notation=san nodes=true \
+                      file=games_${{ matrix.shard }}.pgn \
+              | tee results_${{ matrix.shard }}.txt; then
+              echo "Fastchess completed successfully."
+              exit 0
+            fi
+            if [ "$attempt" -lt "$max_retries" ]; then
+              echo "Fastchess failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+          echo "Fastchess failed after $max_retries attempts."
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
