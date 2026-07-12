@@ -156,8 +156,9 @@ jobs:
       - name: Run Ordo
         run: |
           chmod +x tools/ordo-linux64
-          printf '<%s>\n' shard-*/game_*.pgn
-          tools/ordo-linux64 -o ratings.txt -- shard-*/games_*.pgn
+          printf '<%s>\n' shard-*/games_*.pgn
+          cat shard-*/games_*.pgn > games.pgn
+          tools/ordo-linux64 -o ratings.txt games.pgn
 
       - uses: actions/setup-python@v6
         with:
