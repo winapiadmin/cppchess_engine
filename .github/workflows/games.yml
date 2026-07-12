@@ -132,7 +132,7 @@ jobs:
             -engine cmd=base-engine/$OUTPUT_EXEC name=base \
             -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=$TC \
-            -rounds 1 \
+            -rounds 1500 \
             -concurrency $(nproc) \
             -pgnout notation=san nodes=true \
                     file=games_${{ matrix.shard }}.pgn \
@@ -171,10 +171,14 @@ jobs:
         run: |
           pip install chess scipy
           git clone https://github.com/jdart1/stats.git
-          python stats/sprt.py \
-            --elo0 "$ELO0" \
-            --elo1 "$ELO1" --alpha 0.05 --beta 0.05 --results $(
-          python extract_ptnml.py shard-*/*.pgn | tee results.txt | tail -n 1)> sprt.txt
+          RESULTS=$(python extract_ptnml.py shard-*/*.pgn | tee results.txt | tail -n1)
+          python -m stats.sprt \
+              --elo0 "$ELO0" \
+              --elo1 "$ELO1" \
+              --alpha 0.05 \
+             --beta 0.05 \
+              --results "$RESULTS"
+              
       - uses: actions/upload-artifact@v4
         with:
           name: results
