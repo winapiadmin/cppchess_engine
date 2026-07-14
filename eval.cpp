@@ -250,7 +250,7 @@ EvalComponents eval_components(const chess::Position &board) {
         devCount[c] = popcount(knightsHome) + popcount(bishopsHome);
     }
     mgScore += (devCount[BLACK] - devCount[WHITE]) * developedMg;
-    //egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
+    // egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
 
     // Early queen development penalty: queen moved but minors still on back rank
     for (Color c : { WHITE, BLACK }) {
@@ -261,8 +261,8 @@ EvalComponents eval_components(const chess::Position &board) {
             int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
             if (undeveloped >= 2) {
                 mgScore -= s * earlyQueenPenalty;
-                //disabled intentionally in endgames
-                //egScore -= s * earlyQueenPenalty;
+                // disabled intentionally in endgames
+                // egScore -= s * earlyQueenPenalty;
             }
         }
     }
