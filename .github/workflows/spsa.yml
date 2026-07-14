@@ -3,10 +3,6 @@ name: run SPSA (see gist)
 on:
   workflow_dispatch:
     inputs:
-      base_ref:
-        description: "Tune branch"
-        required: false
-        default: "HandcraftedEngine"
       output_exec:
         description: "Executable output file name"
         required: false
@@ -18,7 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.base_ref }}
           persist-credentials: false
           
       - uses: actions/setup-python@v6
