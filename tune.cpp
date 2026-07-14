@@ -76,8 +76,8 @@ void Tune::make_option(OptionsMap *opts, const string &n, int v, const SetRange 
               << v << ","              //
               << a << ","              //
               << b << ","              //
-              << (b - a) / 20.0 << "," //
-              << "0.0020" << '\n';
+              << (b - a) / 10.0 << "," //
+              << 0.2 << '\n';
 }
 
 string Tune::next(string &names, bool pop) {

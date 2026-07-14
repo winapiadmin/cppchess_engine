@@ -164,7 +164,6 @@ parser.add_argument("--iters", type=int, default=10, help="iters")
 parser.add_argument("--pairs", type=int, default=4, help="pairs (including repeats)")
 parser.add_argument("--workers", type=int, default=6, help="concurrency")
 parser.add_argument("--stable_offset", type=int, default=3000, help="stability const")
-parser.add_argument("--lr", type=float, default=1e-1, help="base lr")
 parser.add_argument("--alpha", type=float, default=0.602, help="alpha")
 parser.add_argument("--gamma", type=float, default=0.101, help="gamma")
 parser.add_argument("--hash", type=str, default="16", help="TT size")
@@ -182,6 +181,7 @@ def load_params(path, engine_path):
 
                     if line.startswith("(") and line.endswith(")"):
                         line = line[1:-1]
+                        row[0]=line
                     if len(row) == 6:
                         name, val, lo, hi, step, a = row
                         c = max(2.0 * float(step), 1.0)
@@ -247,11 +247,13 @@ def run_fastchess_match(plus_params, minus_params, args, iteration):
         print(e.stdout)
         print("STDERR:")
         print(e.stderr)
-    with open(temp_config_path, "r", encoding="utf-8") as f:
-        output_config = json.load(f)
-    print(json.dumps(output_config["stats"], indent=2))
+    try:
+        with open(temp_config_path, "r", encoding="utf-8") as f:
+            output_config = json.load(f)
+    except Exception:
+        logger.error("Could not read fastchess output config.")
+        return 0.5, 0.5
     stats = output_config.get("stats", {})
-    stats_key = "Plus vs Minus"
 
     if stats_key in stats and "wins" in stats[stats_key]:
         w = stats[stats_key]["wins"]
@@ -346,50 +348,16 @@ def spsa_core(params, args):
 
         deltas = {n: (1 if random.random() < 0.5 else -1) for n in params}
         ak = {n: p["a"] / (k + args.stable_offset) ** args.alpha for n, p in params.items()}
-        ck = {
-            n: p["c"] / (k + 1) ** args.gamma
-            for n, p in params.items()
-        }
+        ck = {n: p["c"] / (k + 1) ** args.gamma for n, p in params.items()}
 
         while True:
-
-            deltas = {
-                n: 1 if random.random() < 0.5 else -1
-                for n in params
-            }
-
-            plus = {
-                n: min(
-                    p["max"],
-                    max(
-                        p["min"],
-                        p["value"] + ck[n] * deltas[n]
-                    ),
-                )
-                for n, p in params.items()
-            }
-
-            minus = {
-                n: min(
-                    p["max"],
-                    max(
-                        p["min"],
-                        p["value"] - ck[n] * deltas[n]
-                    ),
-                )
-                for n, p in params.items()
-            }
-
-            plus_int = {
-                n: int(round(v))
-                for n, v in plus.items()
-            }
-
-            minus_int = {
-                n: int(round(v))
-                for n, v in minus.items()
-            }
-
+            deltas = {n: 1 if random.random() < 0.5 else -1 for n in params}
+            plus = {n: min(p["max"], max(p["min"], p["value"] + ck[n] * deltas[n]))
+                    for n, p in params.items()}
+            minus = {n: min(p["max"], max(p["min"], p["value"] - ck[n] * deltas[n]))
+                     for n, p in params.items()}
+            plus_int = {n: int(round(v)) for n, v in plus.items()}
+            minus_int = {n: int(round(v)) for n, v in minus.items()}
             if plus_int != minus_int:
                 break
         plus_int = {n: int(round(v)) for n, v in plus.items()}
