@@ -254,8 +254,8 @@ def run_fastchess_match(plus_params, minus_params, args, iteration):
         logger.error("Could not read fastchess output config.")
         return 0.5, 0.5
     stats = output_config.get("stats", {})
-
-    if "Plus vs Minus" in stats and "wins" in stats["Plus vs Minus"]:
+    stats_key="Plus vs Minus"
+    if stats_key in stats and "wins" in stats[stats_key]:
         w = stats[stats_key]["wins"]
         l = stats[stats_key]["losses"]
         d = stats[stats_key]["draws"]
