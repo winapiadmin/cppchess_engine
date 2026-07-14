@@ -2,11 +2,6 @@ name: run SPSA (see gist)
 
 on:
   workflow_dispatch:
-    inputs:
-      output_exec:
-        description: "Executable output file name"
-        required: false
-        default: "engine"
 jobs:
   worker:
     runs-on: ubuntu-latest

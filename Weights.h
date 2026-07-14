@@ -16,8 +16,6 @@ inline Value mopUpEdgeDistWeight = 10;
 inline Value spaceWeight = 2;
 inline Value bishopPairMg = 25;
 inline Value bishopPairEg = 50;
-inline Value developedMg = 8;
-inline Value developedEg = 4;
 inline Value rookOpenFileMg = 25;
 inline Value rookOpenFileEg = 20;
 inline Value rookSemiOpenFileMg = 15;
@@ -35,16 +33,6 @@ inline Value kqkEdgeWeight = 15;
 inline Value krkDistWeight = 5;
 inline Value krkEdgeWeight = 10;
 inline Value kpkWeight = 15;
-inline Value hangingScore = 70;
-inline Value overloadScore = 25;
-inline Value threatByRankScore = 10;
-inline Value minorImWt = 30;
-inline Value bishopImWt = 15;
-inline Value rookImWt = 20;
-inline Value queenImWt = 50;
-inline Value rammedPawnPenalty = 10;
-inline Value rookOnSeventhBonus = 30;
-inline Value earlyQueenPenalty = 5;
 inline Value mgMobilityCnt[7][8] = {
     {   0,   0,  0, 0,  0,  0,  0,  0 },
     {   0,   0,  0, 0,  0,  0,  0,  0 },
@@ -109,6 +97,8 @@ inline Value mg_pawn_table[56] = { 0,   0,   0,   0,   0,  0,   0,  0,  0,   0, 
 inline Value eg_pawn_table[56] = { 0,   0,   0,   0,   0,  0,   0,   0,  0,   0,   0,   0,   0,   0,   0,   0,   -5,  -2, 2,
                                    5,   5,   2,   -2,  -5, -10, -5,  10, 20,  20,  10,  -5,  -10, -20, -10, 30,  55,  55, 30,
                                    -10, -20, -35, -20, 70, 110, 110, 70, -20, -35, -60, -45, 120, 180, 180, 120, -45, -60 };
+inline Value developedMg = 8;
+inline Value developedEg = 4;
 inline Value outpostBonusKnight[2] = { 15, 30 };
 inline Value outpostBonusBishop[2] = { 10, 25 };
 inline Value kingProtector[6][2] = {
@@ -125,8 +115,7 @@ inline Value threatByMinor[7][2] = {
     { 15, 25 },
     { 15, 25 },
     { 25, 35 },
-    { 35, 50 },
-    {  0,  0 }
+    { 35, 50 }
 };
 inline Value threatByRook[7][2] = {
     {  0,  0 },
@@ -134,8 +123,17 @@ inline Value threatByRook[7][2] = {
     { 10, 15 },
     { 10, 15 },
     { 20, 25 },
-    { 25, 35 },
-    {  0,  0 }
+    { 25, 35 }
 };
+inline Value hangingScore = 70;
+inline Value overloadScore = 25;
+inline Value threatByRankScore = 10;
+inline Value minorImWt = 30;
+inline Value bishopImWt = 15;
+inline Value rookImWt = 20;
+inline Value queenImWt = 50;
+inline Value rammedPawnPenalty = 10;
+inline Value rookOnSeventhBonus = 30;
+inline Value earlyQueenPenalty = 5;
 } // namespace engine::eval
 #endif

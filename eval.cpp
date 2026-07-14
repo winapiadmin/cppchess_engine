@@ -238,7 +238,7 @@ EvalComponents eval_components(const chess::Position &board) {
     // Precompute pawn attacks (needed for outpost, threats, etc.)
     Bitboard pawnBB[2] = { board.pieces(PAWN, WHITE), board.pieces(PAWN, BLACK) };
     Bitboard pawnAtks[2] = { attacks::pawn<WHITE>(pawnBB[WHITE]), attacks::pawn<BLACK>(pawnBB[BLACK]) };
-#if 0
+#if 1
     // Development bonus: penalize undeveloped knights/bishops in middlegame
     int devCount[2] = { 0, 0 };
     for (Color c : { WHITE, BLACK }) {
@@ -250,7 +250,7 @@ EvalComponents eval_components(const chess::Position &board) {
         devCount[c] = popcount(knightsHome) + popcount(bishopsHome);
     }
     mgScore += (devCount[BLACK] - devCount[WHITE]) * developedMg;
-    egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
+    //egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
 
     // Early queen development penalty: queen moved but minors still on back rank
     for (Color c : { WHITE, BLACK }) {
@@ -312,7 +312,7 @@ EvalComponents eval_components(const chess::Position &board) {
                 mgScore += _sign * (7 - kd) * kingTropismMg[pt];
                 egScore += _sign * (7 - kd) * kingTropismEg[pt];
             }
-#if 0
+#if 1
             // King protector: bonus for pieces close to own king
             if (pt != PAWN && pt != KING) {
                 int kdist = square_distance(sq, board.kingSq(pc));
@@ -361,7 +361,7 @@ EvalComponents eval_components(const chess::Position &board) {
             }
         }
     }
-#if 0
+#if 1
     // Trapped bishop penalty
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -394,7 +394,7 @@ EvalComponents eval_components(const chess::Position &board) {
             }
         }
     }
-#if 0
+#if 1
     // Rook on seventh rank bonus (endgame, x-raying >=2 undefended pawns)
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -463,7 +463,7 @@ EvalComponents eval_components(const chess::Position &board) {
             }
         }
     }
-#if 0
+#if 1
     // Pawn rams: blocked pawn penalty
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -606,7 +606,7 @@ EvalComponents eval_components(const chess::Position &board) {
     }
 
 // --- Threat evaluation ---
-#if 0
+#if 1
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
         Color opp = ~c;
