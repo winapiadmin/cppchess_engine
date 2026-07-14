@@ -30,7 +30,7 @@ jobs:
           cmake --build . -j$(nproc)
       - name: Tune engine
         run: |
-          python spsa.py --iters 160 --pairs 30 --engine build/engine --workers $(nproc) --stable_offset 2000
+          python spsa.py --iters 40 --pairs 30 --engine build/engine --workers $(nproc)
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
