@@ -112,7 +112,7 @@ def main():
 
     print()
     print(ptnml)
-    
+    print(" ".join([str(w) for w in ptnml]))
 
 if __name__ == "__main__":
     main()
