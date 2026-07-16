@@ -181,7 +181,7 @@ jobs:
               --elo1 "$ELO1" \
               --alpha 0.05 \
               --beta 0.05 \
-              --results "$RESULTS"
+              --results $RESULTS
               
       - uses: actions/upload-artifact@v4
         with:
