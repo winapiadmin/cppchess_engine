@@ -3,7 +3,7 @@
 #include "search.h"
 #include <algorithm>
 using namespace chess;
-using engine::eval::piece_value;
+using engine::eval::piece_value_mg;
 namespace engine::movepick {
 
 static Bitboard att(PieceType pt, Square sq, Bitboard occ) {
@@ -66,7 +66,7 @@ Value see(Position &board, Move move) {
     Value gain[32];
     PieceType attacker = board.at<PieceType>(move.from());
 
-    gain[0] = piece_value(captured);
+    gain[0] = piece_value_mg(captured);
 
     Color stm = ~board.side_to_move();
     int d = 0;
@@ -74,7 +74,7 @@ Value see(Position &board, Move move) {
     while (++d < 32) {
 
         // Charge the piece that just captured.
-        gain[d] = piece_value(attacker) - gain[d - 1];
+        gain[d] = piece_value_mg(attacker) - gain[d - 1];
 
         if (gain[d] < 0)
             break;
@@ -109,8 +109,8 @@ void orderMoves(Position &board, Movelist &moves, Move ttMove, int ply, const en
             scores[i] = 10000;
         else if (board.isCapture(move)) {
             Value s = see(board, move);
-            Value capturedVal = move.type_of() == EN_PASSANT ? piece_value(PAWN) : piece_value(board.at<PieceType>(move.to()));
-            Value attackerVal = piece_value(board.at<PieceType>(move.from()));
+            Value capturedVal = move.type_of() == EN_PASSANT ? piece_value_mg(PAWN) : piece_value_mg(board.at<PieceType>(move.to()));
+            Value attackerVal = piece_value_mg(board.at<PieceType>(move.from()));
             scores[i] = (s >= -50 ? 9000 : 4000) + std::max(s, Value(-50)) + (capturedVal * 10 - attackerVal) / 100;
         } else if (move == session.killerMoves[ply][0])
             scores[i] = 8500;

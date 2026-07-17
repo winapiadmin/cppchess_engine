@@ -181,13 +181,12 @@ jobs:
               --elo1 "$ELO1" \
               --alpha 0.05 \
               --beta 0.05 \
-              --results $RESULTS
+              --results $RESULTS | tee -a results.txt
               
       - uses: actions/upload-artifact@v4
         with:
           name: results
           path: |
-            shard-*/games_*.pgn
             ratings.txt
             sprt.txt
             results.txt

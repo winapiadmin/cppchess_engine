@@ -147,7 +147,7 @@ int compute_game_phase(const chess::Position &board) {
         else if (pt == chess::QUEEN)
             phase += QueenPhase;
     }
-    return (phase * 256 + TotalPhase / 2) / TotalPhase;
+    return std::min((phase * 128 + TotalPhase / 2) / TotalPhase, 128);
 }
 
 void accumulate_gradient(const chess::Position &board,
@@ -203,28 +203,29 @@ void accumulate_gradient(const chess::Position &board,
                     gradient[it_eg->second] += common_factor * eff * phase_eg;
             }
 
-            auto add_mat = [&](auto *addr) {
-                auto it = addr_to_idx.find(addr);
-                if (it != addr_to_idx.end()) {
-                    gradient[it->second] += common_factor * eff * phase_mg;
-                    gradient[it->second] += common_factor * eff * phase_eg;
-                }
+            auto add_mat = [&](auto *addr_mg, auto *addr_eg) {
+                auto it_mg = addr_to_idx.find(addr_mg);
+                auto it_eg = addr_to_idx.find(addr_eg);
+                if (it_mg != addr_to_idx.end())
+                    gradient[it_mg->second] += common_factor * eff * phase_mg;
+                if (it_eg != addr_to_idx.end())
+                    gradient[it_eg->second] += common_factor * eff * phase_eg;
             };
             switch (pt) {
             case PAWN:
-                add_mat(&PawnValue);
+                add_mat(&PawnValueMG, &PawnValueEG);
                 break;
             case KNIGHT:
-                add_mat(&KnightValue);
+                add_mat(&KnightValueMG, &KnightValueEG);
                 break;
             case BISHOP:
-                add_mat(&BishopValue);
+                add_mat(&BishopValueMG, &BishopValueEG);
                 break;
             case ROOK:
-                add_mat(&RookValue);
+                add_mat(&RookValueMG, &RookValueEG);
                 break;
             case QUEEN:
-                add_mat(&QueenValue);
+                add_mat(&QueenValueMG, &QueenValueEG);
                 break;
             default:
                 break;
@@ -742,8 +743,20 @@ void texel_tune(TuneData &all,
                 pos.set_fen(fen);
 
                 auto comp = eval::eval_components(pos);
+                int sf = 64;
+                int total = chess::popcount(pos.occ());
+                int pawns = pos.count<chess::PAWN>();
+                if (total == 2 && pawns == 0)
+                    sf = 0;
+                else if (total <= 4 && pawns == 0)
+                    sf = 32;
+                int eg = sf ? comp.eg * sf / 64 : 0;
+                int v = sf ? (comp.mg * comp.phase + eg * (128 - comp.phase)) / 128 : 0;
+                v = (v / 16) * 16;
+                int rule50 = std::min(static_cast<int>(pos.rule50_count()), 100);
+                v = v * (100 - rule50) / 100;
                 const int sign = pos.side_to_move() == chess::WHITE ? 1 : -1;
-                Value score = (((comp.mg * comp.phase) + (comp.eg * (256 - comp.phase))) * sign) / 256 + eval::tempo;
+                Value score = v * sign + eval::tempo;
 
                 double sig = sigmoid(score);
                 double error = sig - all.result(idx);
@@ -755,8 +768,8 @@ void texel_tune(TuneData &all,
 
                 double sig_deriv = 0.004 * sig * (1.0 - sig);
                 double common_factor = 2.0 * error * sig_deriv;
-                double phase_mg = comp.phase / 256.0;
-                double phase_eg = (256 - comp.phase) / 256.0;
+                double phase_mg = comp.phase / 128.0;
+                double phase_eg = (128 - comp.phase) / 128.0;
                 double stm_sign_val = (pos.side_to_move() == chess::WHITE) ? 1.0 : -1.0;
 
                 accumulate_gradient(pos, common_factor, addr_map, phase_mg, phase_eg, stm_sign_val, pg);

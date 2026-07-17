@@ -32,16 +32,26 @@ Value *egPst[] = { nullptr, eg_pawn_table, eg_knight_table, eg_bishop_table, eg_
 
 TUNE(SetRange(5, 30),
      tempo,
-     SetRange(80, 120),
-     PawnValue,
-     SetRange(280, 370),
-     KnightValue,
-     SetRange(300, 400),
-     BishopValue,
-     SetRange(450, 550),
-     RookValue,
+     SetRange(80, 150),
+     PawnValueMG,
+     SetRange(160, 260),
+     PawnValueEG,
+     SetRange(650, 850),
+     KnightValueMG,
+     SetRange(750, 950),
+     KnightValueEG,
+     SetRange(700, 900),
+     BishopValueMG,
      SetRange(800, 1000),
-     QueenValue);
+     BishopValueEG,
+     SetRange(1100, 1400),
+     RookValueMG,
+     SetRange(1200, 1500),
+     RookValueEG,
+     SetRange(2200, 2800),
+     QueenValueMG,
+     SetRange(2400, 3000),
+     QueenValueEG);
 TUNE(SetRange(-50, 70), mgMobilityCnt, egMobilityCnt);
 TUNE(SetRange(0, 30), fianchettoBonus, SetRange(0, 100), trappedBishopPenalty);
 TUNE(SetRange(-20, 20), kingTropismMg, kingTropismEg);
@@ -281,8 +291,8 @@ EvalComponents eval_components(const chess::Position &board) {
                 continue;
             mgScore += _sign * mgPst[pt][_sq];
             egScore += _sign * egPst[pt][_sq];
-            mgScore += _sign * piece_value(pt);
-            egScore += _sign * piece_value(pt);
+            mgScore += _sign * piece_value_mg(pt);
+            egScore += _sign * piece_value_eg(pt);
             if (pt == KNIGHT)
                 phase += KnightPhase;
             else if (pt == BISHOP)
@@ -715,18 +725,45 @@ EvalComponents eval_components(const chess::Position &board) {
         board.count<ROOK>() == 0 && board.count<QUEEN>() == 0)
         return { 0, 0, 0 };
 
-    phase = std::min((phase * 256 + TotalPhase / 2) / TotalPhase, 256);
+    phase = std::min((phase * 128 + TotalPhase / 2) / TotalPhase, 128);
     return { mgScore, egScore, phase };
 }
 Value eval(const chess::Position &board) {
-    const int sign = board.side_to_move() == WHITE ? 1 : -1;
     auto [mg, eg, phase] = eval_components(board);
-    if (mg == 0 && eg == 0)
+    // Draw detected by eval_components (returned {0,0,0})
+    if (mg == 0 && eg == 0 && phase == 0)
         return 0;
-    return (((mg * phase) + (eg * (256 - phase))) * sign) / 256 + engine::eval::tempo;
+
+    // Scale factor (guide-based, simplified)
+    int sf = 64;
+    int total = popcount(board.occ());
+    int pawns = board.count<PAWN>();
+    if (total == 2 && pawns == 0)
+        return 0;  // K vs K draw
+    if (total <= 4 && pawns == 0)
+        sf = 32;
+    eg = eg * sf / 64;
+
+    // Tapered mix
+    int v = (mg * phase + eg * (128 - phase)) / 128;
+
+    // Quantization to multiples of 16 (guide convention)
+    v = (v / 16) * 16;
+
+    // 50-move rule scaling
+    int rule50 = std::min(static_cast<int>(board.rule50_count()), 100);
+    v = v * (100 - rule50) / 100;
+
+    // Convert to side-to-move perspective and add tempo
+    const int sign = board.side_to_move() == WHITE ? 1 : -1;
+    return v * sign + engine::eval::tempo;
 }
-Value piece_value(PieceType pt) {
-    Value pieces[] = { 0, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, 0 };
+Value piece_value_mg(PieceType pt) {
+    Value pieces[] = { 0, PawnValueMG, KnightValueMG, BishopValueMG, RookValueMG, QueenValueMG, 0 };
+    return pieces[pt];
+}
+Value piece_value_eg(PieceType pt) {
+    Value pieces[] = { 0, PawnValueEG, KnightValueEG, BishopValueEG, RookValueEG, QueenValueEG, 0 };
     return pieces[pt];
 }
 } // namespace engine::eval
