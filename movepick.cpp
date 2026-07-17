@@ -109,7 +109,8 @@ void orderMoves(Position &board, Movelist &moves, Move ttMove, int ply, const en
             scores[i] = 10000;
         else if (board.isCapture(move)) {
             Value s = see(board, move);
-            Value capturedVal = move.type_of() == EN_PASSANT ? piece_value_mg(PAWN) : piece_value_mg(board.at<PieceType>(move.to()));
+            Value capturedVal =
+                move.type_of() == EN_PASSANT ? piece_value_mg(PAWN) : piece_value_mg(board.at<PieceType>(move.to()));
             Value attackerVal = piece_value_mg(board.at<PieceType>(move.from()));
             scores[i] = (s >= -50 ? 9000 : 4000) + std::max(s, Value(-50)) + (capturedVal * 10 - attackerVal) / 100;
         } else if (move == session.killerMoves[ply][0])

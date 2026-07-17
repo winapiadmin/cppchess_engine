@@ -739,7 +739,7 @@ Value eval(const chess::Position &board) {
     int total = popcount(board.occ());
     int pawns = board.count<PAWN>();
     if (total == 2 && pawns == 0)
-        return 0;  // K vs K draw
+        return 0; // K vs K draw
     if (total <= 4 && pawns == 0)
         sf = 32;
     eg = eg * sf / 64;
