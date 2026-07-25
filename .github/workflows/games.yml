@@ -110,9 +110,9 @@ jobs:
   test:
     needs: [build-new, build-base, prepare-tools]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        shard: [0, 1, 2, 3,4,5,6,7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 
     runs-on: ubuntu-latest
 
@@ -125,6 +125,7 @@ jobs:
           ELO0: ${{ github.event.inputs.elo0 }}
           ELO1: ${{ github.event.inputs.elo1 }}
         run: |
+          set -eo pipefail
           chmod +x new-engine/engine
           chmod +x base-engine/$OUTPUT_EXEC
           chmod +x tools/fastchess
