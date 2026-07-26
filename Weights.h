@@ -2,12 +2,17 @@
 #define WEIGHTS_H
 #include "eval.h"
 namespace engine::eval {
-inline Value tempo = 20;
-inline Value PawnValue = 100;
-inline Value KnightValue = 320;
-inline Value BishopValue = 330;
-inline Value RookValue = 500;
-inline Value QueenValue = 900;
+inline Value tempo = 28;
+inline Value PawnValueMG = 124;
+inline Value KnightValueMG = 781;
+inline Value BishopValueMG = 825;
+inline Value RookValueMG = 1276;
+inline Value QueenValueMG = 2538;
+inline Value PawnValueEG = 206;
+inline Value KnightValueEG = 854;
+inline Value BishopValueEG = 915;
+inline Value RookValueEG = 1380;
+inline Value QueenValueEG = 2682;
 inline Value fianchettoBonus = 20;
 inline Value trappedBishopPenalty = 60;
 inline Value centerWeight = 5;
@@ -98,7 +103,6 @@ inline Value eg_pawn_table[56] = { 0,   0,   0,   0,   0,  0,   0,   0,  0,   0,
                                    5,   5,   2,   -2,  -5, -10, -5,  10, 20,  20,  10,  -5,  -10, -20, -10, 30,  55,  55, 30,
                                    -10, -20, -35, -20, 70, 110, 110, 70, -20, -35, -60, -45, 120, 180, 180, 120, -45, -60 };
 inline Value developedMg = 8;
-inline Value developedEg = 4;
 inline Value outpostBonusKnight[2] = { 15, 30 };
 inline Value outpostBonusBishop[2] = { 10, 25 };
 inline Value kingProtector[6][2] = {

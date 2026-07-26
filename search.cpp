@@ -145,8 +145,8 @@ Value qsearch(Position &board, Value alpha, Value beta, search::Session &session
             if (!isCapture && !givesCheck)
                 continue;
             if (isCapture && !givesCheck && move.type_of() != PROMOTION) {
-                Value capturedValue =
-                    move.type_of() == EN_PASSANT ? eval::piece_value(PAWN) : eval::piece_value(board.at<PieceType>(move.to()));
+                Value capturedValue = move.type_of() == EN_PASSANT ? eval::piece_value_mg(PAWN)
+                                                                   : eval::piece_value_mg(board.at<PieceType>(move.to()));
                 if (standPat + capturedValue + 200 < alpha)
                     continue;
                 if (movepick::see(board, move) < 0)

@@ -147,7 +147,7 @@ int compute_game_phase(const chess::Position &board) {
         else if (pt == chess::QUEEN)
             phase += QueenPhase;
     }
-    return (phase * 256 + TotalPhase / 2) / TotalPhase;
+    return std::min((phase * 128 + TotalPhase / 2) / TotalPhase, 128);
 }
 
 void accumulate_gradient(const chess::Position &board,
@@ -166,7 +166,7 @@ void accumulate_gradient(const chess::Position &board,
     for (Color c : { WHITE, BLACK }) {
         double s = (c == WHITE) ? 1.0 : -1.0;
         Square qStart = c == WHITE ? SQ_D1 : SQ_D8;
-        if (!(board.pieces(QUEEN, c) & (1ULL << qStart))) {
+        if (board.pieces(QUEEN, c) && !(board.pieces(QUEEN, c) & (1ULL << qStart))) {
             Bitboard backRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
             int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
             if (undeveloped >= 2) {
@@ -174,6 +174,18 @@ void accumulate_gradient(const chess::Position &board,
                 if (it != addr_to_idx.end())
                     gradient[it->second] += common_factor * (s * stm_sign) * (-undeveloped);
             }
+        }
+    }
+
+    {
+        auto it = addr_to_idx.find(&developedMg);
+        if (it != addr_to_idx.end()) {
+            int devCount[2] = { 0, 0 };
+            for (Color c : { WHITE, BLACK }) {
+                Bitboard backRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
+                devCount[c] = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
+            }
+            gradient[it->second] += common_factor * stm_sign * (devCount[BLACK] - devCount[WHITE]) * phase_mg;
         }
     }
 
@@ -203,28 +215,29 @@ void accumulate_gradient(const chess::Position &board,
                     gradient[it_eg->second] += common_factor * eff * phase_eg;
             }
 
-            auto add_mat = [&](auto *addr) {
-                auto it = addr_to_idx.find(addr);
-                if (it != addr_to_idx.end()) {
-                    gradient[it->second] += common_factor * eff * phase_mg;
-                    gradient[it->second] += common_factor * eff * phase_eg;
-                }
+            auto add_mat = [&](auto *addr_mg, auto *addr_eg) {
+                auto it_mg = addr_to_idx.find(addr_mg);
+                auto it_eg = addr_to_idx.find(addr_eg);
+                if (it_mg != addr_to_idx.end())
+                    gradient[it_mg->second] += common_factor * eff * phase_mg;
+                if (it_eg != addr_to_idx.end())
+                    gradient[it_eg->second] += common_factor * eff * phase_eg;
             };
             switch (pt) {
             case PAWN:
-                add_mat(&PawnValue);
+                add_mat(&PawnValueMG, &PawnValueEG);
                 break;
             case KNIGHT:
-                add_mat(&KnightValue);
+                add_mat(&KnightValueMG, &KnightValueEG);
                 break;
             case BISHOP:
-                add_mat(&BishopValue);
+                add_mat(&BishopValueMG, &BishopValueEG);
                 break;
             case ROOK:
-                add_mat(&RookValue);
+                add_mat(&RookValueMG, &RookValueEG);
                 break;
             case QUEEN:
-                add_mat(&QueenValue);
+                add_mat(&QueenValueMG, &QueenValueEG);
                 break;
             default:
                 break;
@@ -654,18 +667,18 @@ void accumulate_gradient(const chess::Position &board,
                 auto it_mg = addr_to_idx.find(&threatByMinor[pt][0]);
                 auto it_eg = addr_to_idx.find(&threatByMinor[pt][1]);
                 if (it_mg != addr_to_idx.end())
-                    gradient[it_mg->second] += common_factor * eff_threat;
+                    gradient[it_mg->second] += common_factor * eff_threat * phase_mg;
                 if (it_eg != addr_to_idx.end())
-                    gradient[it_eg->second] += common_factor * eff_threat;
+                    gradient[it_eg->second] += common_factor * eff_threat * phase_eg;
             }
 
             if (attackedByRook) {
                 auto it_mg = addr_to_idx.find(&threatByRook[pt][0]);
                 auto it_eg = addr_to_idx.find(&threatByRook[pt][1]);
                 if (it_mg != addr_to_idx.end())
-                    gradient[it_mg->second] += common_factor * eff_threat;
+                    gradient[it_mg->second] += common_factor * eff_threat * phase_mg;
                 if (it_eg != addr_to_idx.end())
-                    gradient[it_eg->second] += common_factor * eff_threat;
+                    gradient[it_eg->second] += common_factor * eff_threat * phase_eg;
             }
 
             Rank relRank = relative_rank(c, sq);
@@ -742,12 +755,23 @@ void texel_tune(TuneData &all,
                 pos.set_fen(fen);
 
                 auto comp = eval::eval_components(pos);
-                const int sign = pos.side_to_move() == chess::WHITE ? 1 : -1;
-                Value score = (((comp.mg * comp.phase) + (comp.eg * (256 - comp.phase))) * sign) / 256 + eval::tempo;
+                Value score = eval::score_from_components(comp, pos);
+
+                int sf = 64;
+                int total = chess::popcount(pos.occ());
+                int pawns = pos.count<chess::PAWN>();
+                if (total == 2 && pawns == 0)
+                    sf = 0;
+                else if (total <= 4 && pawns == 0)
+                    sf = 32;
 
                 double sig = sigmoid(score);
                 double error = sig - all.result(idx);
                 ploss += error * error;
+
+                // Skip gradient accumulation for sentinel positions (forced-zero components)
+                if (comp.mg == 0 && comp.eg == 0 && comp.phase == 0)
+                    continue;
 
                 // Avoid division by zero in gradient
                 if (std::abs(error) < 1e-12)
@@ -755,8 +779,15 @@ void texel_tune(TuneData &all,
 
                 double sig_deriv = 0.004 * sig * (1.0 - sig);
                 double common_factor = 2.0 * error * sig_deriv;
-                double phase_mg = comp.phase / 256.0;
-                double phase_eg = (256 - comp.phase) / 256.0;
+
+                // Scale common_factor by rule-50 factor to match score_from_components
+                {
+                    int rule50 = std::min(static_cast<int>(pos.rule50_count()), 100);
+                    common_factor = common_factor * (100 - rule50) / 100;
+                }
+
+                double phase_mg = comp.phase / 128.0;
+                double phase_eg = sf ? (128 - comp.phase) / 128.0 * sf / 64.0 : 0.0;
                 double stm_sign_val = (pos.side_to_move() == chess::WHITE) ? 1.0 : -1.0;
 
                 accumulate_gradient(pos, common_factor, addr_map, phase_mg, phase_eg, stm_sign_val, pg);

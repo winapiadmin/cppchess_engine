@@ -32,16 +32,26 @@ Value *egPst[] = { nullptr, eg_pawn_table, eg_knight_table, eg_bishop_table, eg_
 
 TUNE(SetRange(5, 30),
      tempo,
-     SetRange(80, 120),
-     PawnValue,
-     SetRange(280, 370),
-     KnightValue,
-     SetRange(300, 400),
-     BishopValue,
-     SetRange(450, 550),
-     RookValue,
+     SetRange(80, 150),
+     PawnValueMG,
+     SetRange(160, 260),
+     PawnValueEG,
+     SetRange(650, 850),
+     KnightValueMG,
+     SetRange(750, 950),
+     KnightValueEG,
+     SetRange(700, 900),
+     BishopValueMG,
      SetRange(800, 1000),
-     QueenValue);
+     BishopValueEG,
+     SetRange(1100, 1400),
+     RookValueMG,
+     SetRange(1200, 1500),
+     RookValueEG,
+     SetRange(2200, 2800),
+     QueenValueMG,
+     SetRange(2400, 3000),
+     QueenValueEG);
 TUNE(SetRange(-50, 70), mgMobilityCnt, egMobilityCnt);
 TUNE(SetRange(0, 30), fianchettoBonus, SetRange(0, 100), trappedBishopPenalty);
 TUNE(SetRange(-20, 20), kingTropismMg, kingTropismEg);
@@ -54,7 +64,7 @@ TUNE(SetRange(0, 30),
      SetRange(1, 30),
      spaceWeight);
 TUNE(SetRange(0, 50), bishopPairMg, SetRange(0, 50), bishopPairEg);
-TUNE(SetRange(1, 20), developedMg, SetRange(1, 20), developedEg);
+TUNE(SetRange(1, 20), developedMg);
 TUNE(SetRange(0, 30),
      rookOpenFileMg,
      SetRange(0, 30),
@@ -238,7 +248,7 @@ EvalComponents eval_components(const chess::Position &board) {
     // Precompute pawn attacks (needed for outpost, threats, etc.)
     Bitboard pawnBB[2] = { board.pieces(PAWN, WHITE), board.pieces(PAWN, BLACK) };
     Bitboard pawnAtks[2] = { attacks::pawn<WHITE>(pawnBB[WHITE]), attacks::pawn<BLACK>(pawnBB[BLACK]) };
-#if 0
+#if 1
     // Development bonus: penalize undeveloped knights/bishops in middlegame
     int devCount[2] = { 0, 0 };
     for (Color c : { WHITE, BLACK }) {
@@ -250,19 +260,19 @@ EvalComponents eval_components(const chess::Position &board) {
         devCount[c] = popcount(knightsHome) + popcount(bishopsHome);
     }
     mgScore += (devCount[BLACK] - devCount[WHITE]) * developedMg;
-    egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
+    // EG development term intentionally disabled
 
     // Early queen development penalty: queen moved but minors still on back rank
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
         Square qStart = c == WHITE ? SQ_D1 : SQ_D8;
-        if (!(board.pieces(QUEEN, c) & (1ULL << qStart))) {
+        if (board.pieces(QUEEN, c) && !(board.pieces(QUEEN, c) & (1ULL << qStart))) {
             Bitboard backRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
             int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
             if (undeveloped >= 2) {
                 mgScore -= s * earlyQueenPenalty;
-                //disabled intentionally in endgames
-                //egScore -= s * earlyQueenPenalty;
+                // disabled intentionally in endgames
+                // egScore -= s * earlyQueenPenalty;
             }
         }
     }
@@ -281,8 +291,8 @@ EvalComponents eval_components(const chess::Position &board) {
                 continue;
             mgScore += _sign * mgPst[pt][_sq];
             egScore += _sign * egPst[pt][_sq];
-            mgScore += _sign * piece_value(pt);
-            egScore += _sign * piece_value(pt);
+            mgScore += _sign * piece_value_mg(pt);
+            egScore += _sign * piece_value_eg(pt);
             if (pt == KNIGHT)
                 phase += KnightPhase;
             else if (pt == BISHOP)
@@ -312,7 +322,7 @@ EvalComponents eval_components(const chess::Position &board) {
                 mgScore += _sign * (7 - kd) * kingTropismMg[pt];
                 egScore += _sign * (7 - kd) * kingTropismEg[pt];
             }
-#if 0
+#if 1
             // King protector: bonus for pieces close to own king
             if (pt != PAWN && pt != KING) {
                 int kdist = square_distance(sq, board.kingSq(pc));
@@ -361,7 +371,7 @@ EvalComponents eval_components(const chess::Position &board) {
             }
         }
     }
-#if 0
+#if 1
     // Trapped bishop penalty
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -394,7 +404,7 @@ EvalComponents eval_components(const chess::Position &board) {
             }
         }
     }
-#if 0
+#if 1
     // Rook on seventh rank bonus (endgame, x-raying >=2 undefended pawns)
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -463,7 +473,7 @@ EvalComponents eval_components(const chess::Position &board) {
             }
         }
     }
-#if 0
+#if 1
     // Pawn rams: blocked pawn penalty
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
@@ -606,7 +616,7 @@ EvalComponents eval_components(const chess::Position &board) {
     }
 
 // --- Threat evaluation ---
-#if 0
+#if 1
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
         Color opp = ~c;
@@ -715,18 +725,39 @@ EvalComponents eval_components(const chess::Position &board) {
         board.count<ROOK>() == 0 && board.count<QUEEN>() == 0)
         return { 0, 0, 0 };
 
-    phase = std::min((phase * 256 + TotalPhase / 2) / TotalPhase, 256);
+    phase = std::min((phase * 128 + TotalPhase / 2) / TotalPhase, 128);
     return { mgScore, egScore, phase };
 }
-Value eval(const chess::Position &board) {
-    const int sign = board.side_to_move() == WHITE ? 1 : -1;
-    auto [mg, eg, phase] = eval_components(board);
-    if (mg == 0 && eg == 0)
+Value score_from_components(const EvalComponents &comp, const chess::Position &board) {
+    if (comp.mg == 0 && comp.eg == 0 && comp.phase == 0)
         return 0;
-    return (((mg * phase) + (eg * (256 - phase))) * sign) / 256 + engine::eval::tempo;
+
+    int sf = 64;
+    int total = chess::popcount(board.occ());
+    int pawns = board.count<chess::PAWN>();
+    if (total == 2 && pawns == 0)
+        return 0;
+    if (total <= 4 && pawns == 0)
+        sf = 32;
+    int eg = comp.eg * sf / 64;
+
+    int v = (comp.mg * comp.phase + eg * (128 - comp.phase)) / 128;
+    v = (v / 16) * 16;
+
+    int rule50 = std::min(static_cast<int>(board.rule50_count()), 100);
+    v = v * (100 - rule50) / 100;
+
+    const int sign = board.side_to_move() == chess::WHITE ? 1 : -1;
+    return v * sign + engine::eval::tempo;
 }
-Value piece_value(PieceType pt) {
-    Value pieces[] = { 0, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, 0 };
+
+Value eval(const chess::Position &board) { return score_from_components(eval_components(board), board); }
+Value piece_value_mg(PieceType pt) {
+    Value pieces[] = { 0, PawnValueMG, KnightValueMG, BishopValueMG, RookValueMG, QueenValueMG, 0 };
+    return pieces[pt];
+}
+Value piece_value_eg(PieceType pt) {
+    Value pieces[] = { 0, PawnValueEG, KnightValueEG, BishopValueEG, RookValueEG, QueenValueEG, 0 };
     return pieces[pt];
 }
 } // namespace engine::eval

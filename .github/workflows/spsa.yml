@@ -2,15 +2,6 @@ name: run SPSA (see gist)
 
 on:
   workflow_dispatch:
-    inputs:
-      base_ref:
-        description: "Tune branch"
-        required: false
-        default: "HandcraftedEngine"
-      output_exec:
-        description: "Executable output file name"
-        required: false
-        default: "engine"
 jobs:
   worker:
     runs-on: ubuntu-latest
@@ -18,7 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.base_ref }}
           persist-credentials: false
           
       - uses: actions/setup-python@v6
@@ -40,13 +30,13 @@ jobs:
           cmake --build . -j$(nproc)
       - name: Tune engine
         run: |
-          python spsa.py --iters 150 --pairs 30 --engine build/engine --workers $(nproc)
+          python spsa.py --iters 40 --pairs 30 --engine build/engine --workers $(nproc)
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: spsa-results
           path: |
             ./Weights.h
-            *.pgn
-            *.epd
-          compression-level: 0
+            games*.pgn
+            games*.epd
+          compression-level: 9

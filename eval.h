@@ -52,6 +52,8 @@ extern Value *egPst[];
 
 Value eval(const chess::Position &board);
 EvalComponents eval_components(const chess::Position &board);
-Value piece_value(chess::PieceType pt);
+Value score_from_components(const EvalComponents &comp, const chess::Position &board);
+Value piece_value_mg(chess::PieceType pt);
+Value piece_value_eg(chess::PieceType pt);
 } // namespace eval
 } // namespace engine
