@@ -197,7 +197,8 @@ def load_params(path, engine_path):
                         "a": float(a),
                         "c": float(c),
                     }
-                except Exception as e:print(e, row)
+                except (ValueError, IndexError) as e:
+                    logger.debug("skipping unparseable row %r: %s", row, e)
         return params
     else:
         logger.info("%s not found, starting engine to capture parameters", path)
