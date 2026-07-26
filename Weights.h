@@ -103,7 +103,6 @@ inline Value eg_pawn_table[56] = { 0,   0,   0,   0,   0,  0,   0,   0,  0,   0,
                                    5,   5,   2,   -2,  -5, -10, -5,  10, 20,  20,  10,  -5,  -10, -20, -10, 30,  55,  55, 30,
                                    -10, -20, -35, -20, 70, 110, 110, 70, -20, -35, -60, -45, 120, 180, 180, 120, -45, -60 };
 inline Value developedMg = 8;
-inline Value developedEg = 4;
 inline Value outpostBonusKnight[2] = { 15, 30 };
 inline Value outpostBonusBishop[2] = { 10, 25 };
 inline Value kingProtector[6][2] = {

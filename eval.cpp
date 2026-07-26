@@ -260,7 +260,7 @@ EvalComponents eval_components(const chess::Position &board) {
         devCount[c] = popcount(knightsHome) + popcount(bishopsHome);
     }
     mgScore += (devCount[BLACK] - devCount[WHITE]) * developedMg;
-    // egScore += (devCount[BLACK] - devCount[WHITE]) * developedEg;
+    // EG development term intentionally disabled
 
     // Early queen development penalty: queen moved but minors still on back rank
     for (Color c : { WHITE, BLACK }) {
