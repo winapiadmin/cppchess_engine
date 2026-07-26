@@ -166,7 +166,7 @@ void accumulate_gradient(const chess::Position &board,
     for (Color c : { WHITE, BLACK }) {
         double s = (c == WHITE) ? 1.0 : -1.0;
         Square qStart = c == WHITE ? SQ_D1 : SQ_D8;
-        if (!(board.pieces(QUEEN, c) & (1ULL << qStart))) {
+        if (board.pieces(QUEEN, c) && !(board.pieces(QUEEN, c) & (1ULL << qStart))) {
             Bitboard backRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
             int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
             if (undeveloped >= 2) {
@@ -769,12 +769,23 @@ void texel_tune(TuneData &all,
                 double error = sig - all.result(idx);
                 ploss += error * error;
 
+                // Skip gradient accumulation for sentinel positions (forced-zero components)
+                if (comp.mg == 0 && comp.eg == 0 && comp.phase == 0)
+                    continue;
+
                 // Avoid division by zero in gradient
                 if (std::abs(error) < 1e-12)
                     continue;
 
                 double sig_deriv = 0.004 * sig * (1.0 - sig);
                 double common_factor = 2.0 * error * sig_deriv;
+
+                // Scale common_factor by rule-50 factor to match score_from_components
+                {
+                    int rule50 = std::min(static_cast<int>(pos.rule50_count()), 100);
+                    common_factor = common_factor * (100 - rule50) / 100;
+                }
+
                 double phase_mg = comp.phase / 128.0;
                 double phase_eg = sf ? (128 - comp.phase) / 128.0 * sf / 64.0 : 0.0;
                 double stm_sign_val = (pos.side_to_move() == chess::WHITE) ? 1.0 : -1.0;

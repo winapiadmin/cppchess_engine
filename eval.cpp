@@ -64,7 +64,7 @@ TUNE(SetRange(0, 30),
      SetRange(1, 30),
      spaceWeight);
 TUNE(SetRange(0, 50), bishopPairMg, SetRange(0, 50), bishopPairEg);
-TUNE(SetRange(1, 20), developedMg, SetRange(1, 20), developedEg);
+TUNE(SetRange(1, 20), developedMg);
 TUNE(SetRange(0, 30),
      rookOpenFileMg,
      SetRange(0, 30),
@@ -266,7 +266,7 @@ EvalComponents eval_components(const chess::Position &board) {
     for (Color c : { WHITE, BLACK }) {
         int s = (c == WHITE) ? 1 : -1;
         Square qStart = c == WHITE ? SQ_D1 : SQ_D8;
-        if (!(board.pieces(QUEEN, c) & (1ULL << qStart))) {
+        if (board.pieces(QUEEN, c) && !(board.pieces(QUEEN, c) & (1ULL << qStart))) {
             Bitboard backRank = c == WHITE ? attacks::MASK_RANK[0] : attacks::MASK_RANK[7];
             int undeveloped = popcount((board.pieces(KNIGHT, c) | board.pieces(BISHOP, c)) & backRank);
             if (undeveloped >= 2) {
