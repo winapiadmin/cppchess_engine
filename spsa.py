@@ -346,7 +346,6 @@ def spsa_core(params, args):
     for k in range(args.iters):
         logger.info(f"=== iter: {k} ===")
 
-        deltas = {n: (1 if random.random() < 0.5 else -1) for n in params}
         ak = {n: p["a"] / (k + args.stable_offset) ** args.alpha for n, p in params.items()}
         ck = {n: p["c"] / (k + 1) ** args.gamma for n, p in params.items()}
 
@@ -360,11 +359,6 @@ def spsa_core(params, args):
             minus_int = {n: int(round(v)) for n, v in minus.items()}
             if plus_int != minus_int:
                 break
-        plus_int = {n: int(round(v)) for n, v in plus.items()}
-        minus_int = {n: int(round(v)) for n, v in minus.items()}
-
-        if plus_int == minus_int:
-            continue
         f_plus, f_minus = run_fastchess_match(plus, minus, args, k)
         
         for n, p in params.items():
