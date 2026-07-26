@@ -728,35 +728,31 @@ EvalComponents eval_components(const chess::Position &board) {
     phase = std::min((phase * 128 + TotalPhase / 2) / TotalPhase, 128);
     return { mgScore, egScore, phase };
 }
-Value eval(const chess::Position &board) {
-    auto [mg, eg, phase] = eval_components(board);
-    // Draw detected by eval_components (returned {0,0,0})
-    if (mg == 0 && eg == 0 && phase == 0)
+Value score_from_components(const EvalComponents &comp, const chess::Position &board) {
+    if (comp.mg == 0 && comp.eg == 0 && comp.phase == 0)
         return 0;
 
-    // Scale factor (guide-based, simplified)
     int sf = 64;
-    int total = popcount(board.occ());
-    int pawns = board.count<PAWN>();
+    int total = chess::popcount(board.occ());
+    int pawns = board.count<chess::PAWN>();
     if (total == 2 && pawns == 0)
-        return 0; // K vs K draw
+        return 0;
     if (total <= 4 && pawns == 0)
         sf = 32;
-    eg = eg * sf / 64;
+    int eg = comp.eg * sf / 64;
 
-    // Tapered mix
-    int v = (mg * phase + eg * (128 - phase)) / 128;
-
-    // Quantization to multiples of 16 (guide convention)
+    int v = (comp.mg * comp.phase + eg * (128 - comp.phase)) / 128;
     v = (v / 16) * 16;
 
-    // 50-move rule scaling
     int rule50 = std::min(static_cast<int>(board.rule50_count()), 100);
     v = v * (100 - rule50) / 100;
 
-    // Convert to side-to-move perspective and add tempo
-    const int sign = board.side_to_move() == WHITE ? 1 : -1;
+    const int sign = board.side_to_move() == chess::WHITE ? 1 : -1;
     return v * sign + engine::eval::tempo;
+}
+
+Value eval(const chess::Position &board) {
+    return score_from_components(eval_components(board), board);
 }
 Value piece_value_mg(PieceType pt) {
     Value pieces[] = { 0, PawnValueMG, KnightValueMG, BishopValueMG, RookValueMG, QueenValueMG, 0 };

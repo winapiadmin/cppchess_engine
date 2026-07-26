@@ -135,7 +135,7 @@ jobs:
             -engine cmd=base-engine/$OUTPUT_EXEC name=base \
             -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=$TC -startup-ms 600000 -ucinewgame-ms 600000 -ping-ms 600000 \
-            -rounds 200 -repeat -log level=err \
+            -rounds $(( ${{ github.event.inputs.rounds }} / 30 )) -repeat -log level=err \
             -concurrency $(nproc) -testEnv -sprt elo0=$ELO0 elo1=$ELO1 alpha=0.05 beta=0.05 \
             -pgnout notation=san nodes=true \
                     file=games_${{ matrix.shard }}.pgn \
