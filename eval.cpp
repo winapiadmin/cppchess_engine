@@ -751,9 +751,7 @@ Value score_from_components(const EvalComponents &comp, const chess::Position &b
     return v * sign + engine::eval::tempo;
 }
 
-Value eval(const chess::Position &board) {
-    return score_from_components(eval_components(board), board);
-}
+Value eval(const chess::Position &board) { return score_from_components(eval_components(board), board); }
 Value piece_value_mg(PieceType pt) {
     Value pieces[] = { 0, PawnValueMG, KnightValueMG, BishopValueMG, RookValueMG, QueenValueMG, 0 };
     return pieces[pt];
