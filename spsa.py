@@ -243,11 +243,10 @@ def run_fastchess_match(plus_params, minus_params, args, iteration):
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
-        print("Return code:", e.returncode)
-        print("STDOUT:")
-        print(e.stdout)
-        print("STDERR:")
-        print(e.stderr)
+        logger.error("fastchess exited %s", e.returncode)
+        logger.debug("STDOUT:\n%s", e.stdout)
+        logger.debug("STDERR:\n%s", e.stderr)
+        return 0.5, 0.5
     try:
         with open(temp_config_path, "r", encoding="utf-8") as f:
             output_config = json.load(f)
