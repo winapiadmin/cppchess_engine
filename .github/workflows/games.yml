@@ -135,7 +135,16 @@ jobs:
             -engine cmd=base-engine/$OUTPUT_EXEC name=base \
             -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
             -each tc=$TC -startup-ms 600000 -ucinewgame-ms 600000 -ping-ms 600000 \
-            -rounds $(( ${{ github.event.inputs.rounds }} / 30 )) -repeat -log level=err \
+          ROUNDS: ${{ github.event.inputs.rounds }}
+        run: |
+          set -eo pipefail
+          if [[ ! "$ROUNDS" =~ ^[0-9]+$ ]]; then
+            echo "rounds must be a decimal integer" >&2
+            exit 1
+          fi
+          rounds_value=$((10#$ROUNDS))
+          shard_rounds=$((rounds_value / 30))
+            -rounds "$shard_rounds" -repeat -log level=err \
             -concurrency $(nproc) -testEnv -sprt elo0=$ELO0 elo1=$ELO1 alpha=0.05 beta=0.05 \
             -pgnout notation=san nodes=true \
                     file=games_${{ matrix.shard }}.pgn \
