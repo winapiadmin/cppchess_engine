@@ -124,17 +124,6 @@ jobs:
           TC: ${{ github.event.inputs.tc }}
           ELO0: ${{ github.event.inputs.elo0 }}
           ELO1: ${{ github.event.inputs.elo1 }}
-        run: |
-          set -eo pipefail
-          chmod +x new-engine/engine
-          chmod +x base-engine/$OUTPUT_EXEC
-          chmod +x tools/fastchess
-          chmod +x tools/ordo-linux64
-          tools/fastchess \
-            -engine cmd=new-engine/engine name=new \
-            -engine cmd=base-engine/$OUTPUT_EXEC name=base \
-            -openings file=tools/UHO_Lichess_4852_v1.epd format=epd order=random \
-            -each tc=$TC -startup-ms 600000 -ucinewgame-ms 600000 -ping-ms 600000 \
           ROUNDS: ${{ github.event.inputs.rounds }}
         run: |
           set -eo pipefail
