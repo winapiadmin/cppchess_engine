@@ -66,9 +66,9 @@ FASTCHESS_TEMPLATE = {
         "alpha": 0.05,
         "beta": 0.05,
         "elo0": 0.0,
-        "elo1": 5.0,
+        "elo1": 10.0,
         "model": "normalized",
-        "enabled": True
+        "enabled": False
     },
     "config_name": "config.json",
     "output": 0,
